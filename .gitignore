@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Virtual envs
+.venv/
+venv/
+.uv/
+
+# Secrets & local env — never commit real keys
+.env
+.env.*
+!.env.example
+
+# Data: fixtures are committed deliberately; everything else stays local
+data/*
+!data/.gitkeep
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Playwright MCP scratch
+.playwright-mcp/
