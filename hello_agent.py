@@ -29,7 +29,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import anthropic
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 # --------------------------------------------------------------------------- #
 # Config — read once from the environment (.env is loaded by `uv run`/uvicorn
@@ -40,7 +40,14 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 SHADOW_MODE = os.environ.get("SHADOW_MODE", "true").lower() == "true"
 LOG_LEVEL = os.environ.get("LOG_LEVEL", "INFO")
-MAX_TURNS = 8
+# Turn budget: max edit→test cycles before the loop gives up. A named control
+# parameter, so it is env-configurable — not a magic constant.
+MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
+
+# NOTE: SHADOW_MODE gates nothing yet — the only tool (get_time) is read-only.
+# It becomes enforcing on Day 5, when write tools (edit_file / open_pr) land: a
+# write-classified call will be skipped or redirected when SHADOW_MODE is true.
+# Until then it is surfaced (in /health) as read-but-not-enforced, on purpose.
 
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. For now the "
@@ -178,7 +185,9 @@ app = FastAPI(title="hello-agent", version="0.1.0")
 
 
 class ChatRequest(BaseModel):
-    message: str
+    # Bounded to guard the stated cost/latency SLO — an unbounded prompt is a
+    # blank cheque to messages.create.
+    message: str = Field(..., max_length=8000)
 
 
 @app.get("/health")
@@ -186,6 +195,7 @@ def health() -> dict:
     return {
         "status": "ok",
         "shadow_mode": SHADOW_MODE,
+        "shadow_enforced": False,  # no write tools yet; enforced from Day 5
         "llm_ready": bool(LLM_API_KEY),
         "model": LLM_MODEL,
     }
