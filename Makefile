@@ -2,7 +2,7 @@
 
 # Start the FastAPI service locally with autoreload.
 run:
-	uv run uvicorn agent.main:app --reload
+	uv run uvicorn hello_agent:app --reload
 
 # Ingest the liberty-rider corpus into the vector store (real on Day 4).
 ingest:
