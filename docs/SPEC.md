@@ -27,7 +27,7 @@ An agent fits here — and a form or a search box would not — because the task
 2. `fetch_ticket(issue_id)` returns the issue title and body as the spec.
 3. The agent works inside a checked-out working copy of the repo. It navigates the code live with `grep_repo` / `read_file` (and consults the prose knowledge base via RAG) to locate the relevant code.
 4. The agent implements the change by **editing files** with `edit_file`. Code is written as iterative, targeted edits to the working tree — there is no one-shot "emit a diff" step.
-5. The agent runs the test suite locally with `run_tests`; if red, it reads the failures, edits again, and repeats until the relevant suite is green (or gives up within a turn budget).
+5. The agent runs the test suite locally with `run_tests`; if red, it reads the failures, edits again, and repeats until the relevant suite is green (or gives up when the turn budget is spent — see Control points).
 6. `open_pr(branch, description)` pushes the working-tree diff as a **draft** PR (shadow mode).
 7. `get_ci_status(pr_id)` reads the GitHub Actions result.
 8. `comment_on_ticket(issue_id, status)` posts the outcome back on the issue.
@@ -40,12 +40,12 @@ An agent fits here — and a form or a search box would not — because the task
 | grep_repo | pattern | none | no matches |
 | read_file | path | none | file not found |
 | edit_file | path, old, new | **writes working tree** | string not found, ambiguous match |
-| run_tests | selector? | none (local sandbox) | failing tests, missing deps, timeout |
+| run_tests | selector? | none (in the run's sandbox) | failing tests, missing deps, timeout |
 | open_pr | branch, description | **writes** (draft PR) | 409 branch exists, 422 validation |
 | get_ci_status | pr_id | none | CI still running, timeout, no workflow |
 | comment_on_ticket | issue_id, status | **writes** | 404, 429 rate-limit |
 
-The agent codes by editing files in the working copy (`edit_file`), not by emitting a patch. There is no `write_code` / `generate_diff` tool — the diff `open_pr` submits is the cumulative `git diff` of the working tree.
+The agent codes by editing files in the working copy (`edit_file`), not by emitting a patch. There is no `write_code` / `generate_diff` tool — the diff `open_pr` submits is the cumulative `git diff` of the working tree. On an **ambiguous match**, `edit_file` refuses and asks the agent to re-issue the edit with more surrounding context — it never silently picks the first match. Git and GitHub operations are hand-written calls for now, to keep the mechanics low-level and explainable; a later brick replaces them with the `gh` / `gog` CLI.
 
 ## Code navigation & RAG
 
@@ -55,6 +55,17 @@ The agent codes by editing files in the working copy (`edit_file`), not by emitt
 ## Control points (local gates)
 
 The CI is the oracle; the agent's job is to converge to green CI. The only local gate before `open_pr` is **running the tests**. Lint, type-check, and coverage stay CI-only for now — they are added as local gates later, and only if Day 9 failure-mode analysis shows they are top causes of first-attempt CI failures. We do not pre-add controls whose need we have not measured.
+
+**Turn budget.** The edit→test loop is capped at `MAX_TURNS` (default 8) cycles. On exhaustion the agent stops, opens **no PR**, and posts a "could not resolve after N turns" comment via `comment_on_ticket`. It never ships a PR it could not get green — a failed run is a comment, not a broken draft left behind.
+
+## Sandbox & isolation
+
+Each ticket run executes in its **own ephemeral sandbox — one per run, never shared** (candidate: an exe.dev-style per-run sandbox). The split of responsibility:
+
+- **The orchestrator** (the FastAPI service) owns the agent loop, the LLM calls, and the structured logging. The loop *drives* the sandbox; it does not run inside it.
+- **The sandbox** is the execution surface: it holds a per-run git worktree / clone and runs `edit_file`, `run_tests`, the linter, and git.
+
+Keeping the loop in the orchestrator keeps the LLM key and all control / observability central, and makes concurrency safe by construction: two tickets are two sandboxes with two worktrees, so they cannot collide or corrupt a shared checkout. `open_pr` pushes from that per-run worktree, and the sandbox is torn down on completion or give-up. This is the v1 shape; it is revisited only if measurement demands it.
 
 ## SLOs
 
@@ -71,6 +82,8 @@ The CI is the oracle; the agent's job is to converge to green CI. The only local
 
 ## Out of scope
 
-1. Auth and crypto changes (the agent never edits the auth or encryption paths).
+The agent never touches these paths, and the boundary is **enforced, not merely requested**: a path denylist checked inside `edit_file` rejects edits to them at the tool boundary (implemented when `edit_file` lands, Day 3). A prompt instruction alone would be a suggestion, not a boundary.
+
+1. Auth and crypto changes.
 2. Multi-tenant isolation logic.
 3. Database migrations.
