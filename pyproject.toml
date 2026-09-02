@@ -1,0 +1,42 @@
+[project]
+name = "ticket-to-pr-agent"
+version = "0.1.0"
+description = "Coding agent that turns a GitHub ticket into a passing PR on tekncoach/liberty-rider-myroadtrips"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    # Model access: the raw Anthropic SDK (Messages API). We write the
+    # tool-calling loop ourselves (plain function-calling loop, no framework)
+    # so the agent mechanism stays 100% ours — that is the point of Days 3 & 5.
+    # No LiteLLM (a multi-provider layer we don't need) and no LangGraph
+    # (a loop framework that would hide what we're here to learn).
+    "anthropic>=0.69",
+    # Service layer
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+]
+
+[project.optional-dependencies]
+# Pulled in on Day 4 when retrieval over the liberty-rider corpus goes real.
+# Kept out of the base install so the service boots with zero DB dependencies.
+rag = [
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3",
+]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["agent", "tools", "rag"]
+
+[tool.pytest.ini_options]
+testpaths = ["evals"]
+addopts = "-q"
