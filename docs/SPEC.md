@@ -64,7 +64,7 @@ v1 is a single **Docker container** (the Day 6 deliverable). The container holds
 
 This is deliberately the simpler, less-isolated option: it is exactly what Day 6 asks for (package the agent as a container) and it avoids an external-sandbox architecture we do not need yet.
 
-Sturdier bricks, later: one ephemeral external sandbox per run, or the **Claude Agent SDK / Claude Managed Agents**, which provide hosted per-session sandboxes and ready-made base tools (bash, file edit) instead of the ones we hand-roll here. We graduate to those once the loop and the evals are solid — not before.
+The upgrade path — external per-run sandboxes, or the Claude Agent SDK / Claude Managed Agents' hosted sandboxes and ready-made base tools — is named as a fork under **Deferred architecture decisions** below. We graduate to it once the loop and the evals are solid, not before.
 
 ## SLOs
 
@@ -78,6 +78,14 @@ Sturdier bricks, later: one ephemeral external sandbox per run, or the **Claude 
 
 - **Shadow mode replays history.** Instead of a percentage of live traffic (which does not map to an agent whose every output a human reviews), shadow runs the agent on issues that were **already resolved** and diffs the agent's PR against the human PR that actually merged. Zero production risk, and it is the baseline for the eval (Day 11 — diff against baseline and quantify value). Metrics: first-attempt CI pass, and how close the agent's change is to the human's.
 - **Progressivity is autonomy per issue-class, not a traffic percentage.** As measured trust grows: (1) draft PR, human reviews everything, the agent never merges → (2) the agent marks the PR ready-for-review once CI is green → (3) auto-merge on green for a narrow, well-defined class (dependency bumps, small scoped tickets) → (4) widen the trusted classes. Kill switch: a label / env flag that instantly reverts everything to shadow (or off).
+
+## Deferred architecture decisions
+
+Real forks named now, each with a stated default (POC) and a stated trigger to revisit (production). Naming them is the point; none is built this week.
+
+1. **Execution isolation.** *Default (POC):* one Docker container running the loop against a per-ticket `git worktree`, runs serialized — the single-worktree limitation is accepted and stated. *Revisit at production:* per-ticket ephemeral sandboxes/containers behind a root gateway that orchestrates runs, or Claude Managed Agents' hosted sandboxes (a build-vs-buy call for the isolation layer). *Trigger:* concurrent tickets, or an `edit_file` blast radius we are no longer willing to run in a shared tree.
+2. **GitHub integration.** *Default (POC):* hand-written calls for speed. `gh` CLI is not more professional than a typed client — it is a different tradeoff: it inherits `gh auth` and ships fast, but its "schema" becomes a CLI argument surface with weaker validation, subprocess-level testing, and `gh`'s stderr as the error contract. *Revisit at Day 5 / production:* a typed client (`PyGithub`) or raw REST with an explicit schema, once the tool must survive rate limits, retries, and structured error handling in front of a customer.
+3. **Retrieval (Day 4).** *Decision:* Ticket→PR needs code search over one repo, not retrieval over a document corpus. Day 4's RAG requirement is satisfied by structured code search (`grep_repo` / `read_file`, optionally AST / tree-sitter) over the target repo, with vector RAG scoped only to the prose knowledge base (docs, past issues / PRs). *Reason:* the corpus is a single codebase, not a document collection. *Revisit:* if the knowledge that matters shifts to prose at a scale where semantic search wins.
 
 ## Out of scope
 
