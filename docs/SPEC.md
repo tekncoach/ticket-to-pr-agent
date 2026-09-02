@@ -40,12 +40,12 @@ An agent fits here — and a form or a search box would not — because the task
 | grep_repo | pattern | none | no matches |
 | read_file | path | none | file not found |
 | edit_file | path, old, new | **writes working tree** | string not found, ambiguous match |
-| run_tests | selector? | none (in the run's sandbox) | failing tests, missing deps, timeout |
+| run_tests | selector? | none (in the run's container) | failing tests, missing deps, timeout |
 | open_pr | branch, description | **writes** (draft PR) | 409 branch exists, 422 validation |
 | get_ci_status | pr_id | none | CI still running, timeout, no workflow |
 | comment_on_ticket | issue_id, status | **writes** | 404, 429 rate-limit |
 
-The agent codes by editing files in the working copy (`edit_file`), not by emitting a patch. There is no `write_code` / `generate_diff` tool — the diff `open_pr` submits is the cumulative `git diff` of the working tree. On an **ambiguous match**, `edit_file` refuses and asks the agent to re-issue the edit with more surrounding context — it never silently picks the first match. Git and GitHub operations are hand-written calls for now, to keep the mechanics low-level and explainable; a later brick replaces them with the `gh` / `gog` CLI.
+The agent codes by editing files in the working copy (`edit_file`), not by emitting a patch. There is no `write_code` / `generate_diff` tool — the diff `open_pr` submits is the cumulative `git diff` of the working tree. On an **ambiguous match**, `edit_file` refuses and asks the agent to re-issue the edit with more surrounding context — it never silently picks the first match. Git and GitHub operations are hand-written calls for now, to keep the mechanics low-level and explainable; a later brick replaces them with the `gh` / `gog` CLI. The base tools themselves (`edit_file`, and later a bash/exec tool) are hand-rolled now to learn their failure modes; they can be swapped for Anthropic-defined tool types (`text_editor_20250728`, `bash_20250124`) — a standard contract we still execute ourselves — or for the Claude Agent SDK's ready-made built-ins, without changing the loop's shape.
 
 ## Code navigation & RAG
 
@@ -58,14 +58,13 @@ The CI is the oracle; the agent's job is to converge to green CI. The only local
 
 **Turn budget.** The edit→test loop is capped at `MAX_TURNS` (default 8) cycles. On exhaustion the agent stops, opens **no PR**, and posts a "could not resolve after N turns" comment via `comment_on_ticket`. It never ships a PR it could not get green — a failed run is a comment, not a broken draft left behind.
 
-## Sandbox & isolation
+## Runtime & isolation
 
-Each ticket run executes in its **own ephemeral sandbox — one per run, never shared** (candidate: an exe.dev-style per-run sandbox). The split of responsibility:
+v1 is a single **Docker container** (the Day 6 deliverable). The container holds a checkout of the target repo and runs the whole loop in place — LLM calls, `edit_file`, `run_tests`, and git all execute inside it. Isolation between runs is a fresh git worktree (or clone) per ticket inside the container, and runs are serialized for the POC, so concurrency is not a concern yet.
 
-- **The orchestrator** (the FastAPI service) owns the agent loop, the LLM calls, and the structured logging. The loop *drives* the sandbox; it does not run inside it.
-- **The sandbox** is the execution surface: it holds a per-run git worktree / clone and runs `edit_file`, `run_tests`, the linter, and git.
+This is deliberately the simpler, less-isolated option: it is exactly what Day 6 asks for (package the agent as a container) and it avoids an external-sandbox architecture we do not need yet.
 
-Keeping the loop in the orchestrator keeps the LLM key and all control / observability central, and makes concurrency safe by construction: two tickets are two sandboxes with two worktrees, so they cannot collide or corrupt a shared checkout. `open_pr` pushes from that per-run worktree, and the sandbox is torn down on completion or give-up. This is the v1 shape; it is revisited only if measurement demands it.
+Sturdier bricks, later: one ephemeral external sandbox per run, or the **Claude Agent SDK / Claude Managed Agents**, which provide hosted per-session sandboxes and ready-made base tools (bash, file edit) instead of the ones we hand-roll here. We graduate to those once the loop and the evals are solid — not before.
 
 ## SLOs
 
