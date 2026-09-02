@@ -39,3 +39,4 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["evals"]
 addopts = "-q"
+pythonpath = ["."]         # so tests can `import hello_agent` from the repo root
