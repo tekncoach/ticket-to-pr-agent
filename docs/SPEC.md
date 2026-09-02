@@ -1,75 +1,76 @@
 # Ticket → PR agent — SPEC
 
-A coding agent that turns a GitHub Issue on `tekncoach/liberty-rider-myroadtrips`
-into a pull request that passes CI. Target loop: Cognition (Devin-style).
+A coding agent that turns a GitHub Issue on `tekncoach/liberty-rider-myroadtrips` into a pull request that passes CI. Target loop: Cognition (Devin-style).
 
 ## Problem
-On `liberty-rider-myroadtrips` (a real Python app: sync / crypto / multitenant,
-17-file test suite + GitHub Actions CI), turning a tracked issue into a merged
-change is manual: an engineer reads the issue, finds the relevant code, writes
-the diff, opens the PR, and babysits CI. That is slow and it does not scale with
-backlog. An agent fits — not a form or a search box — because the task is
-multi-step, hard to fully specify up front, and **objectively verifiable**: the
-test suite and CI are the oracle that says whether the work is correct.
+
+`liberty-rider-myroadtrips` is a real Python app — sync, crypto, multitenant, a 17-file test suite and GitHub Actions CI. On a repo like this, turning a tracked issue into a merged change is entirely manual.
+
+Today an engineer reads the issue, finds the relevant code, writes the diff, opens the PR, and babysits CI until it goes green. Every step is human, and none of it scales with the backlog: twice the tickets means twice the hours.
+
+An agent fits here — and a form or a search box would not — because the task is multi-step and hard to fully specify up front. Crucially, it is also **objectively verifiable**: the test suite and CI are the oracle that says whether the work is actually correct, so the agent's output can be checked instead of trusted.
 
 ## Users & surfaces
-- **Primary user / channel:** Software Engineer, who triggers the agent by
-  tagging a GitHub Issue; served over an API (`POST /v1/chat`) and back through
-  a comment on the issue. Product Manager is a secondary reader who follows
-  status via the issue comment.
-- **Auth model:** service account (a dedicated bot / GitHub App token). It is a
-  single-repo automation, not a multi-user product — no per-user OAuth.
+
+- **Primary user / channel:** Software Engineer, who puts an issue in front of the agent; served over an API and answered back through a comment on the issue. The Product Manager is a secondary reader who follows status via that comment.
+- **Auth model:** service account (a dedicated bot / GitHub App token). This is a single-repo automation, not a multi-user product — no per-user OAuth.
+
+## Trigger (which issues, and how they reach the agent)
+
+- **Which issues are agent-treatable:** exactly those carrying the label `agent:ready` with a usable body. That label is the contract — no label, no run. A Kanban column (GitHub Projects) would be a heavier variant of the same label idea; not used here.
+- **POC trigger:** explicit and manual. The engineer hands the agent an issue number — `POST /v1/run {"issue": 42}` (or `make run-ticket ISSUE=42`). No public endpoint, no infra.
+- **Production trigger:** a GitHub webhook on the `issues` / `labeled` event. When `agent:ready` is added, GitHub POSTs to our service and the run starts (push, real time). Polling the API for labelled issues is the fallback when no public URL is available.
 
 ## Happy path (step list)
-1. An issue is tagged → `fetch_ticket(issue_id)` returns the spec.
-2. Agent retrieves the relevant code context (RAG over the liberty-rider corpus).
-3. Agent generates the diff **in-loop** (no separate `write_code` tool — code
-   generation happens in-context, not via a named tool).
-4. Agent runs the test suite locally → `run_tests(...)`; if red, it iterates on
-   the diff and repeats. It only proceeds when the relevant suite is green.
-5. `open_pr(branch, diff, description)` opens the PR **as a draft** (shadow mode).
-6. `get_ci_status(pr_id)` reads the GitHub Actions result.
-7. `comment_on_ticket(issue_id, status)` posts the outcome back on the issue.
+
+1. The trigger delivers an issue number (manual POST for the POC; webhook on `agent:ready` in production).
+2. `fetch_ticket(issue_id)` returns the issue title and body as the spec.
+3. The agent works inside a checked-out working copy of the repo. It navigates the code live with `grep_repo` / `read_file` (and consults the prose knowledge base via RAG) to locate the relevant code.
+4. The agent implements the change by **editing files** with `edit_file`. Code is written as iterative, targeted edits to the working tree — there is no one-shot "emit a diff" step.
+5. The agent runs the test suite locally with `run_tests`; if red, it reads the failures, edits again, and repeats until the relevant suite is green (or gives up within a turn budget).
+6. `open_pr(branch, description)` pushes the working-tree diff as a **draft** PR (shadow mode).
+7. `get_ci_status(pr_id)` reads the GitHub Actions result.
+8. `comment_on_ticket(issue_id, status)` posts the outcome back on the issue.
 
 ## Tools (OpenAPI-ish)
+
 | Tool | Input | Side effects | Failure modes |
 |------|-------|--------------|---------------|
 | fetch_ticket | issue_id | none | issue missing, empty body |
-| run_tests | paths?/selector? | none (local sandbox) | failing tests, missing deps, timeout |
-| open_pr | branch, diff, description | **writes** (draft PR) | 409 branch exists, invalid diff, 422 validation |
+| grep_repo | pattern | none | no matches |
+| read_file | path | none | file not found |
+| edit_file | path, old, new | **writes working tree** | string not found, ambiguous match |
+| run_tests | selector? | none (local sandbox) | failing tests, missing deps, timeout |
+| open_pr | branch, description | **writes** (draft PR) | 409 branch exists, 422 validation |
 | get_ci_status | pr_id | none | CI still running, timeout, no workflow |
 | comment_on_ticket | issue_id, status | **writes** | 404, 429 rate-limit |
 
-## RAG
-- **Corpus:** the liberty-rider codebase (`app.py`, `sync.py`, `liberty_client.py`,
-  `db.py`, migrations, tests), the repo's GitHub Issues as ticket specs, and
-  `README` / `CONTRIBUTING` / docs as the knowledge base. `.py`, `.sql`, `.md`;
-  small (single repo); refreshed on each ingest run (Day 4).
-- **Chunking:** ~800 tokens / ~120 overlap, symbol-aware where possible, with
-  metadata (source path, symbol name, kind: code/test/doc).
-- **Retrieval:** hybrid BM25 + dense vector (pgvector); no re-ranker in v1.
-- **Grounding rule:** refuse (ask for clarification instead of inventing) if no
-  chunk scores above threshold τ = 0.35.
+The agent codes by editing files in the working copy (`edit_file`), not by emitting a patch. There is no `write_code` / `generate_diff` tool — the diff `open_pr` submits is the cumulative `git diff` of the working tree.
+
+## Code navigation & RAG
+
+- **Code is navigated live, not vector-indexed.** The agent reads the repo on demand with `grep_repo` + `read_file` on the working checkout. On a single small repo this beats vector RAG: the reads are exact and current, follow imports, and never break on chunk boundaries the way code chunks do. A structural index (tree-sitter / ctags) or a codebase-graph service (Graphify-class platforms) is the productionization path if the repo grows — not needed at this size.
+- **RAG is scoped to the prose knowledge base**, which is where semantic search actually earns its place (and the artifact the sprint asks for on Day 4): `README`, `CONTRIBUTING`, docs, and past resolved Issues / PRs. Chunking ~800 tokens / ~120 overlap with metadata (source path, kind: doc/issue/pr); hybrid BM25 + dense vector over pgvector; no re-ranker in v1. Grounding rule: refuse (ask for clarification instead of inventing) if no chunk scores above threshold τ = 0.35.
+
+## Control points (local gates)
+
+The CI is the oracle; the agent's job is to converge to green CI. The only local gate before `open_pr` is **running the tests**. Lint, type-check, and coverage stay CI-only for now — they are added as local gates later, and only if Day 9 failure-mode analysis shows they are top causes of first-attempt CI failures. We do not pre-add controls whose need we have not measured.
 
 ## SLOs
+
 - **p95 latency:** ≤ 300 s per ticket→PR run (local test execution dominates).
-- **cost/request:** ≤ $0.20 per run on the default model (`claude-haiku-4-5`);
-  re-baseline when the model is raised.
-- **grounded rate:** ≥ 95% (the diff touches only files/symbols that exist in
-  the retrieved context).
+- **cost/request:** ≤ $0.20 per run on the default model (`claude-haiku-4-5`); re-baseline when the model is raised.
+- **grounded rate:** ≥ 95% (the edits touch only files/symbols that exist in the repo the agent actually read).
 - **tool success rate:** ≥ 98% (tool calls that execute without error).
-- **★ north-star:** ≥ 40% of generated PRs pass GitHub CI on the first attempt.
-  This is the honest quality measure — the residual gap after the local
-  `run_tests` gate is env divergence (local ≠ CI) plus CI-only gates (lint,
-  type-check, coverage, integration). Days 7–9 push this number up.
+- **★ north-star:** ≥ 40% of generated PRs pass GitHub CI on the first attempt. This is the honest quality measure — the residual gap after the local `run_tests` gate is env divergence (local ≠ CI) plus CI-only gates (lint, type-check, coverage, integration). Days 7–9 push this number up.
 
 ## Shadow / rollout
-- **Shadow mode is the default** (`SHADOW_MODE=true`): the agent opens the PR as
-  a draft and never marks it ready, so its output is compared against the human
-  baseline without acting for real. Staged percentages (5% → 25% → 100%) and the
-  kill switch are designed on Days 10–12; not built yet.
+
+- **Shadow mode replays history.** Instead of a percentage of live traffic (which does not map to an agent whose every output a human reviews), shadow runs the agent on issues that were **already resolved** and diffs the agent's PR against the human PR that actually merged. Zero production risk, and it is the baseline for the eval (Day 11 — diff against baseline and quantify value). Metrics: first-attempt CI pass, and how close the agent's change is to the human's.
+- **Progressivity is autonomy per issue-class, not a traffic percentage.** As measured trust grows: (1) draft PR, human reviews everything, the agent never merges → (2) the agent marks the PR ready-for-review once CI is green → (3) auto-merge on green for a narrow, well-defined class (dependency bumps, small scoped tickets) → (4) widen the trusted classes. Kill switch: a label / env flag that instantly reverts everything to shadow (or off).
 
 ## Out of scope
+
 1. Auth and crypto changes (the agent never edits the auth or encryption paths).
 2. Multi-tenant isolation logic.
 3. Database migrations.
