@@ -5,6 +5,7 @@ from typing import Any, Callable
 import json, os, time
 
 import anthropic
+import jsonschema
 
 @dataclass
 class ToolResult:
@@ -126,6 +127,8 @@ class AgentRuntime:
                         result = ToolResult(ok=False, error_code="unknown_tool")
                     elif tool.side_effect and not self.allow_side_effects:
                         result = ToolResult(ok=False, error_code="side_effect_not_allowed")
+                    elif (schema_error := self._validate_args(tool, block.input)) is not None:
+                        result = ToolResult(ok=False, error_code=f"invalid_args: {schema_error}")
                     else:
                         try:
                             result = tool.handler(block.input)
@@ -154,6 +157,20 @@ class AgentRuntime:
             messages.append({"role": "user", "content": tool_results})
 
         return {"error": "max_turns", "trace": trace}
+
+    @staticmethod
+    def _validate_args(tool: Tool, args: dict) -> str | None:
+        # Only our own custom tools declare input_schema — Anthropic-defined
+        # tools (anthropic_type set) are schema-less on the wire, so there is
+        # no schema of ours to check them against; their handlers already do
+        # their own minimal checks (missing_path, empty_command, ...).
+        if tool.input_schema is None:
+            return None
+        try:
+            jsonschema.validate(instance=args, schema=tool.input_schema)
+        except jsonschema.ValidationError as exc:
+            return exc.message
+        return None
 
     def _llm(self, messages: list[dict], tools: list[dict]) -> anthropic.types.Message:
         return self._client.messages.create(

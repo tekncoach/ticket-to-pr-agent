@@ -21,6 +21,11 @@ dependencies = [
     # dependency (FastAPI's TestClient); promoted here since fetch_ticket
     # needs it at runtime too, not just in tests.
     "httpx>=0.27",
+    # Validates tool_use.input against a Tool's input_schema before the
+    # handler ever runs (a policy guard, not a mechanic we're here to
+    # learn — unlike the GitHub calls, reinventing a JSON Schema validator
+    # would just be reinventing a solved problem).
+    "jsonschema>=4.23",
 ]
 
 [project.optional-dependencies]
