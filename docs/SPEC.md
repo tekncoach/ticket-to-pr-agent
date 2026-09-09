@@ -38,7 +38,7 @@ An agent fits here — and a form or a search box would not — because the task
 |------|-------|--------------|---------------|
 | fetch_ticket | issue_id | none | issue missing, empty body |
 | bash *(Anthropic-defined `bash_20250124`)* | command (read-only allowlist) | none | shell operator rejected, executable not allowed, timeout, non-zero exit |
-| edit_file | path, old, new | **writes working tree** | string not found, ambiguous match |
+| edit_file *(Anthropic-defined `text_editor_20250728`)* | command (view/create/str_replace/insert) + path | **writes working tree** | path escapes workspace, path denied, string not found, ambiguous match |
 | run_tests | selector? | none (in the run's container) | failing tests, missing deps, timeout |
 | open_pr | branch, description | **writes** (draft PR) | 409 branch exists, 422 validation |
 | get_ci_status | pr_id | none | CI still running, timeout, no workflow |
@@ -48,7 +48,7 @@ The agent codes by editing files in the working copy (`edit_file`), not by emitt
 
 Code navigation uses Anthropic's own `bash_20250124` client-side tool instead of a hand-rolled `grep_repo`/`read_file` pair — schema-less on the wire (Claude already knows the input shape), but Anthropic never executes it: our handler still does all the work, exactly like a hand-rolled tool would. Restricted to a read-only allowlist (`grep`, `cat`, `find`, `ls`, `head`, `tail`, `wc`, `pwd`); shell operators (`&&`, `|`, `;`, backticks, `$()`) are rejected outright rather than blocklisted — Anthropic's own security guidance for this tool says a blocklist is not sufficient. Confirmed live: the agent tried a piped `find ... | wc -l`, got rejected, and self-corrected to a plain `find` on the next turn.
 
-Git and GitHub operations are hand-written calls for now, to keep the mechanics low-level and explainable; a later brick replaces them with the `gh` / `gog` CLI. `edit_file` stays hand-rolled for now to learn its failure modes — the ambiguous-match refusal above is exactly that kind of lesson. `text_editor_20250728` is Anthropic's equivalent (also schema-less, also refuses an ambiguous `str_replace` match) and is the named next swap once the hand-rolled version has taught what it needs to, without changing the loop's shape — the same fork `bash` just went through.
+Git and GitHub operations are hand-written calls for now, to keep the mechanics low-level and explainable; a later brick replaces them with the `gh` / `gog` CLI. `edit_file` went through the same fork `bash` already did: built on Anthropic's own `text_editor_20250728` (schema-less, `str_replace_based_edit_tool`) rather than hand-rolled — the ambiguous-match refusal above is that tool's own built-in behavior, not something we wrote. Two independent safety layers sit around it regardless of who wrote the edit mechanics: every path is resolved to canonical form and checked against the workspace root, and a path denylist blocks specific files even inside it.
 
 ## Code navigation & RAG
 
@@ -92,8 +92,9 @@ Real forks named now, each with a stated default (POC) and a stated trigger to r
 
 ## Out of scope
 
-The agent never touches these paths, and the boundary is **enforced, not merely requested**: a path denylist checked inside `edit_file` rejects edits to them at the tool boundary (implemented when `edit_file` lands, Day 3). A prompt instruction alone would be a suggestion, not a boundary.
+The agent never touches these paths. A prompt instruction alone would be a suggestion, not a boundary — enforcement lives in `edit_file`'s path denylist, checked at the tool boundary (built Day 3), for the two that map to real, isolated paths:
 
-1. Auth and crypto changes.
-2. Multi-tenant isolation logic.
-3. Database migrations.
+1. Crypto changes — `crypto.py` denied entirely.
+2. Database migrations — `migrations/` denied entirely.
+
+**Auth is named in scope but not actually enforced by the denylist**: it lives inside `app.py`, shared with unrelated code, and there is no dedicated auth file a path-level denylist can isolate. Today this boundary is a prompt instruction only, not an enforced one — the gap this section's own rule (a suggestion isn't a boundary) says not to trust. Revisit once auth logic is extracted to its own module, or `edit_file` gets a line-range or symbol-level guard, neither built yet.
