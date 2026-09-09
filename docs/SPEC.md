@@ -25,7 +25,7 @@ An agent fits here — and a form or a search box would not — because the task
 
 1. The trigger delivers an issue number (manual POST for the POC; webhook on `agent:ready` in production).
 2. `fetch_ticket(issue_id)` returns the issue title and body as the spec.
-3. The agent works inside a checked-out working copy of the repo. It navigates the code live with `grep_repo` / `read_file` (and consults the prose knowledge base via RAG) to locate the relevant code.
+3. The agent works inside a checked-out working copy of the repo. It navigates the code live with the `bash` tool (read-only allowlist: `grep`/`cat`/`find`/`ls`/`head`/`tail`/`wc`/`pwd`) — and consults the prose knowledge base via RAG — to locate the relevant code.
 4. The agent implements the change by **editing files** with `edit_file`. Code is written as iterative, targeted edits to the working tree — there is no one-shot "emit a diff" step.
 5. The agent runs the test suite locally with `run_tests`; if red, it reads the failures, edits again, and repeats until the relevant suite is green (or gives up when the turn budget is spent — see Control points).
 6. `open_pr(branch, description)` pushes the working-tree diff as a **draft** PR (shadow mode).
@@ -37,19 +37,22 @@ An agent fits here — and a form or a search box would not — because the task
 | Tool | Input | Side effects | Failure modes |
 |------|-------|--------------|---------------|
 | fetch_ticket | issue_id | none | issue missing, empty body |
-| grep_repo | pattern | none | no matches |
-| read_file | path | none | file not found |
+| bash *(Anthropic-defined `bash_20250124`)* | command (read-only allowlist) | none | shell operator rejected, executable not allowed, timeout, non-zero exit |
 | edit_file | path, old, new | **writes working tree** | string not found, ambiguous match |
 | run_tests | selector? | none (in the run's container) | failing tests, missing deps, timeout |
 | open_pr | branch, description | **writes** (draft PR) | 409 branch exists, 422 validation |
 | get_ci_status | pr_id | none | CI still running, timeout, no workflow |
 | comment_on_ticket | issue_id, status | **writes** | 404, 429 rate-limit |
 
-The agent codes by editing files in the working copy (`edit_file`), not by emitting a patch. There is no `write_code` / `generate_diff` tool — the diff `open_pr` submits is the cumulative `git diff` of the working tree. On an **ambiguous match**, `edit_file` refuses and asks the agent to re-issue the edit with more surrounding context — it never silently picks the first match. Git and GitHub operations are hand-written calls for now, to keep the mechanics low-level and explainable; a later brick replaces them with the `gh` / `gog` CLI. The base tools themselves (`edit_file`, and later a bash/exec tool) are hand-rolled now to learn their failure modes; they can be swapped for Anthropic-defined tool types (`text_editor_20250728`, `bash_20250124`) — a standard contract we still execute ourselves — or for the Claude Agent SDK's ready-made built-ins, without changing the loop's shape.
+The agent codes by editing files in the working copy (`edit_file`), not by emitting a patch. There is no `write_code` / `generate_diff` tool — the diff `open_pr` submits is the cumulative `git diff` of the working tree. On an **ambiguous match**, `edit_file` refuses and asks the agent to re-issue the edit with more surrounding context — it never silently picks the first match.
+
+Code navigation uses Anthropic's own `bash_20250124` client-side tool instead of a hand-rolled `grep_repo`/`read_file` pair — schema-less on the wire (Claude already knows the input shape), but Anthropic never executes it: our handler still does all the work, exactly like a hand-rolled tool would. Restricted to a read-only allowlist (`grep`, `cat`, `find`, `ls`, `head`, `tail`, `wc`, `pwd`); shell operators (`&&`, `|`, `;`, backticks, `$()`) are rejected outright rather than blocklisted — Anthropic's own security guidance for this tool says a blocklist is not sufficient. Confirmed live: the agent tried a piped `find ... | wc -l`, got rejected, and self-corrected to a plain `find` on the next turn.
+
+Git and GitHub operations are hand-written calls for now, to keep the mechanics low-level and explainable; a later brick replaces them with the `gh` / `gog` CLI. `edit_file` stays hand-rolled for now to learn its failure modes — the ambiguous-match refusal above is exactly that kind of lesson. `text_editor_20250728` is Anthropic's equivalent (also schema-less, also refuses an ambiguous `str_replace` match) and is the named next swap once the hand-rolled version has taught what it needs to, without changing the loop's shape — the same fork `bash` just went through.
 
 ## Code navigation & RAG
 
-- **Code is navigated live, not vector-indexed.** The agent reads the repo on demand with `grep_repo` + `read_file` on the working checkout. On a single small repo this beats vector RAG: the reads are exact and current, follow imports, and never break on chunk boundaries the way code chunks do. A structural index (tree-sitter / ctags) or a codebase-graph service (Graphify-class platforms) is the productionization path if the repo grows — not needed at this size.
+- **Code is navigated live, not vector-indexed.** The agent reads the repo on demand with the `bash` tool (Anthropic's `bash_20250124`, read-only allowlist) on the working checkout. On a single small repo this beats vector RAG: the reads are exact and current, follow imports, and never break on chunk boundaries the way code chunks do. A structural index (tree-sitter / ctags) or a codebase-graph service (Graphify-class platforms) is the productionization path if the repo grows — not needed at this size.
 - **RAG is scoped to the prose knowledge base**, which is where semantic search actually earns its place (and the artifact the sprint asks for on Day 4): `README`, `CONTRIBUTING`, docs, and past resolved Issues / PRs. Chunking ~800 tokens / ~120 overlap with metadata (source path, kind: doc/issue/pr); hybrid BM25 + dense vector over pgvector; no re-ranker in v1. Grounding rule: refuse (ask for clarification instead of inventing) if no chunk scores above threshold τ = 0.35.
 
 ## Control points (local gates)
