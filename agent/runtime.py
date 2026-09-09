@@ -2,7 +2,9 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable
-import json, time
+import json, os, time
+
+import anthropic
 
 @dataclass
 class ToolResult:
@@ -24,11 +26,22 @@ class AgentRuntime:
     tools: dict[str, Tool]
     system: str
     max_turns: int = 8
+    max_tokens: int = 1024
     allow_side_effects: bool = False
 
+    def __post_init__(self) -> None:
+        # Built once per AgentRuntime instance, not once per call — the SDK
+        # client holds a connection pool, no reason to recreate it per turn.
+        api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise RuntimeError("LLM_API_KEY (or ANTHROPIC_API_KEY) is not set.")
+        self._client = anthropic.Anthropic(api_key=api_key)
+
     def run(self, user_msg: str) -> dict:
+        # Anthropic takes the system prompt as its own messages.create(system=...)
+        # kwarg, not as a {"role": "system"} entry in the messages list — that
+        # role is invalid there. self.system is passed straight through in _llm.
         messages = [
-            {"role": "system", "content": self.system},
             {"role": "user", "content": user_msg},
         ]
         trace = []
@@ -40,6 +53,15 @@ class AgentRuntime:
             # else: return final content + trace
             ...
         return {"error": "max_turns", "trace": trace}
+
+    def _llm(self, messages: list[dict], tools: list[dict]) -> anthropic.types.Message:
+        return self._client.messages.create(
+            model=self.model,
+            max_tokens=self.max_tokens,
+            system=self.system,
+            messages=messages,
+            tools=tools,
+        )
 
     def _anthropic_tools(self) -> list[dict]:
         # Anthropic's Messages API takes tools flat: no "type": "function"
