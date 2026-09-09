@@ -57,6 +57,13 @@ class AgentRuntime:
             {"role": "user", "content": user_msg},
         ]
         trace = []
+        # Day 3's drill, verbatim: a repeated identical tool call is a spin,
+        # not progress. The loop has no memory of its own otherwise — this
+        # set is that memory, scoped to this run only. Known future
+        # exception, not yet needed: a legitimate polling tool (get_ci_status)
+        # would want to call itself again with the same args; not built yet,
+        # so not solved yet.
+        seen_calls: set[tuple[str, str]] = set()
         for turn in range(self.max_turns):
             t0 = time.time()
             resp = self._llm(messages, tools=self._anthropic_tools())
@@ -87,6 +94,24 @@ class AgentRuntime:
                     "event": "tool_call", "turn": turn,
                     "tool": block.name, "args": block.input,
                 })
+
+                signature = (block.name, json.dumps(block.input, sort_keys=True))
+                if signature in seen_calls:
+                    # Hard stop, not another error tool_result: an error result
+                    # gives the model a chance to try again, which is exactly
+                    # the spin we're stopping — it already got this identical
+                    # call's outcome once, sending it back changes nothing.
+                    trace.append({"event": "duplicate_call_stop", "turn": turn, "tool": block.name})
+                    return {
+                        "error": "duplicate_tool_call",
+                        "answer": (
+                            f"Stopping: repeated an identical call to {block.name} "
+                            "with the same arguments. Trying again would not "
+                            "produce new information."
+                        ),
+                        "trace": trace,
+                    }
+                seen_calls.add(signature)
 
                 if i >= self.max_parallel_tool_calls:
                     # Still executed sequentially today (see docs/SDLC-schema.md
