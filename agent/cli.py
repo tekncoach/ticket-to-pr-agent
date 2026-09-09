@@ -18,6 +18,7 @@ import sys
 
 from agent.runtime import AgentRuntime, Tool
 from tools.bash import bash
+from tools.edit_file import edit_file
 from tools.fetch_ticket import fetch_ticket
 from tools.get_time import get_time
 
@@ -26,19 +27,29 @@ from tools.get_time import get_time
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
+# The write gate: edit_file is side_effect=True, so it's rejected unless
+# allow_side_effects is True. SHADOW_MODE=true (the safe default) means
+# writes stay off; set SHADOW_MODE=false to actually let the agent edit.
+SHADOW_MODE = os.environ.get("SHADOW_MODE", "true").lower() == "true"
 
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. You can "
     "tell the time with get_time, inspect the checked-out repo with bash "
-    "(read-only commands only: grep, cat, find, ls, head, tail, wc, pwd), and "
-    "read a GitHub Issue with fetch_ticket. Be concise."
+    "(read-only commands only: grep, cat, find, ls, head, tail, wc, pwd), "
+    "read a GitHub Issue with fetch_ticket, and edit files with "
+    "str_replace_based_edit_tool (view/create/str_replace/insert). Be concise."
 )
 
 # hello_agent.py keeps two parallel structures in sync by hand: a TOOLS list
 # of schemas and a separate TOOL_HANDLERS dict of callables. Our Tool
 # dataclass bundles both into one object, so there's only one place to
 # register a tool instead of two that can drift apart.
-TOOLS: dict[str, Tool] = {"get_time": get_time, "bash": bash, "fetch_ticket": fetch_ticket}
+TOOLS: dict[str, Tool] = {
+    "get_time": get_time,
+    "bash": bash,
+    "fetch_ticket": fetch_ticket,
+    "str_replace_based_edit_tool": edit_file,
+}
 
 
 def main() -> None:
@@ -50,6 +61,7 @@ def main() -> None:
     runtime = AgentRuntime(
         model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
         max_tokens=MAX_TOKENS, max_turns=MAX_TURNS,
+        allow_side_effects=not SHADOW_MODE,
     )
     result = runtime.run(user_msg)
     print(result)
