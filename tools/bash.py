@@ -24,11 +24,9 @@ from __future__ import annotations
 
 import shlex
 import subprocess
-from pathlib import Path
 
+from agent.config import WORKSPACE
 from agent.runtime import Tool, ToolResult
-
-WORKSPACE = Path(__file__).resolve().parent.parent / "workspace" / "liberty-rider-myroadtrips"
 
 ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd"}
 # "|" removed on purpose: it's handled structurally below, not as a reject.

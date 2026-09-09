@@ -13,9 +13,9 @@ import os
 
 import httpx
 
+from agent.config import REPO
 from agent.runtime import Tool, ToolResult
 
-REPO = "tekncoach/liberty-rider-myroadtrips"
 GITHUB_API = "https://api.github.com"
 
 
