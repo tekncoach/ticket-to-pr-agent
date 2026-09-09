@@ -1,69 +1,90 @@
-# hello-agent
+# ticket-to-pr-agent
 
-Day 2 of the A10X 14-day sprint — the foundation for a **ticket → PR coding
-agent** aimed at Cognition-style FDE loops. This repo is the "hello world": a
-production-shaped scaffold, a one-page spec, and a runnable tool-using agent you
-can hit over HTTP.
+A coding agent that turns a labeled GitHub Issue into a tested, CI-ready pull request — built directly on Anthropic's Messages API, with no agent framework in between.
 
-The end goal (Days 3–14) is an agent that turns a GitHub Issue on
-`tekncoach/liberty-rider-myroadtrips` into a pull request that passes CI. Today
-it only tells the time — but through the exact loop the real agent will use.
+![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-## Stack
+## What it does
 
-- **Python 3.12+**, managed with [`uv`](https://docs.astral.sh/uv/)
-- **Anthropic SDK** (raw Messages API) — we hand-write the agent loop, no
-  framework, so the mechanism stays ours (that is what Days 3 & 5 build on)
-- **FastAPI** + uvicorn for the service
-- Model: `claude-haiku-4-5` by default, configurable via `LLM_MODEL`
-- `pgvector` for retrieval (wired on Day 4)
+Point the agent at a repo and a labeled issue. It reads the ticket, explores the codebase, makes the change, runs the test suite locally, and opens a draft pull request — reporting the outcome back as a comment on the issue. Every write action stays behind a mode flag until you decide to trust it: shadow mode by default, live writes only when you flip it.
 
-See [`docs/SPEC.md`](docs/SPEC.md) for the full technical spec (problem, users,
-tools, RAG, SLOs, rollout).
+The target repo is a config value, not a hardcoded assumption — point `TARGET_REPO` at any repo you have a token for. Development and every recorded scenario in this repo used [`liberty-rider-myroadtrips`](https://github.com/tekncoach/liberty-rider-myroadtrips) as the reference target.
+
+## Why this exists
+
+Most "agent" demos wrap an LLM call in a chat loop and call it done. This one is built the other way: every mechanism an FDE-style deployment actually needs — structured tool calls, write gating, argument validation, cost and token accounting, crash-safe logging — is hand-rolled and verified against the live API, not assumed to come free from a framework.
+
+- **No agent framework.** The tool-calling loop is built directly on `anthropic.messages.create` — no LangChain, no LangGraph. Every retry, stop condition, and failure path is code you can read start to finish in one file.
+- **Native tools where they fit, hand-rolled where it matters.** File exploration and edits run on Anthropic's own `bash_20250124` and `text_editor_20250728` client-side tools — schema-less, security-hardened at the boundary (an executable allowlist, never `shell=True`, path confinement to the target checkout, a path denylist for sensitive files). GitHub calls stay hand-written REST, deliberately, to keep the mechanics visible.
+- **Policy guards the model can't opt out of.** A hard cap on parallel tool calls, JSON-Schema-validated arguments on every custom tool, a mode flag that disables every write tool at once, and a hard stop the instant the model repeats an identical tool call — converting a possible infinite spin into a bounded, explainable failure.
+- **Full run observability.** Every tool call, token count (including thinking tokens), USD cost, and stop reason is written to an append-only JSONL log per run — flushed and fsynced per event, so a mid-run crash doesn't lose what already happened. An optional live mode prints the same events to stdout as they occur.
+- **A written spec that evolves with the code.** [`docs/SPEC.md`](docs/SPEC.md) states the problem, the tools, the SLOs, and every architecture decision with its trigger to revisit — including the ones later commits reversed, on purpose, once real usage justified it.
+
+## How it works
+
+```
+fetch_ticket → explore (bash) → edit_file → run_tests
+                                      ↑           │
+                                      └── retry ──┘ (until green, or MAX_TURNS)
+                                                  │
+                       git_commit → git_push → open_pr → get_ci_status → comment_on_ticket
+```
+
+The first four stages are built and tested against a live target repo; the rest is the named next milestone. See [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the full diagram, including the production-pipeline reference steps (lint, type-check) this project isn't running locally yet, and why.
 
 ## Quickstart
 
 ```bash
-# 1. Install dependencies
-uv sync
+# Install dependencies
+uv sync --extra dev
 
-# 2. Configure — copy the template and paste your key (.env is gitignored)
+# Configure — copy the template and fill in real values (.env is gitignored)
 cp .env.example .env
-$EDITOR .env                 # set LLM_API_KEY
+$EDITOR .env   # LLM_API_KEY, GITHUB_TOKEN, TARGET_REPO
 
-# 3. Run the service
-set -a && source .env && set +a
-make run                     # http://127.0.0.1:8000
+# Run it
+uv run --env-file .env python -m agent.cli "What does GitHub issue #1 ask for?"
 
-# 4. In another terminal, run the smoke test
-./evals/tests.sh
+# Watch it live instead of waiting for the final answer
+LIVE_TRACE=true uv run --env-file .env python -m agent.cli "..."
 ```
 
-## Endpoints
+Nothing writes to the target repo until `SHADOW_MODE=false` is set explicitly — the default is read-only by design.
 
-| Method | Path | Notes |
-|--------|------|-------|
-| `GET`  | `/health`  | Liveness + config; needs no key |
-| `POST` | `/v1/chat` | Runs the agent loop; returns `{text, trace_id, turns, tool_calls}` |
+## Project layout
+
+```
+agent/
+  runtime.py     the agent loop: tool dispatch, policy guards, thinking, cost tracking
+  cli.py         entrypoint — build an AgentRuntime, run one message
+  config.py      target repo, workspace path, session log location — env-configurable
+  event_sink.py  where trace events go: a JSONL file, live stdout, both, or neither (tests)
+tools/
+  bash.py         Anthropic's native bash tool, read-only allowlist + safe pipelining
+  edit_file.py    Anthropic's native text-editor tool, workspace-confined + denylisted
+  fetch_ticket.py hand-written GitHub REST call
+docs/            the technical spec, architecture decisions, and everything verified live
+evals/           tests
+```
+
+## Testing
 
 ```bash
-curl -s localhost:8000/v1/chat -H 'content-type: application/json' \
-     -d '{"message":"What time is it in Paris?"}'
+uv run pytest evals -q
 ```
 
-Every turn emits one structured JSON log line (`turn.start`, `turn.model`,
-`tool.result`, `turn.end`) so the loop is debuggable from Day 1.
+## Documentation
 
-## Layout
+- [`docs/SPEC.md`](docs/SPEC.md) — problem, users, tools, SLOs, rollout plan, and every deferred architecture decision
+- [`docs/SDLC-schema.md`](docs/SDLC-schema.md) — the full build-to-ship pipeline, what's built vs. planned
+- [`docs/manual_scenarios.md`](docs/manual_scenarios.md) — five live-run scenarios, including a forced refusal and a forced failure
+- [`docs/CLAUDE-CLIENT-SIDE-TOOLS.md`](docs/CLAUDE-CLIENT-SIDE-TOOLS.md) — reference for Anthropic's native tool types
+- [`docs/CLAUDE-USAGE-AND-THINKING.md`](docs/CLAUDE-USAGE-AND-THINKING.md) — the full API usage object, verified by inspection, and how extended thinking is wired in
 
-```
-hello_agent.py     single-file agent: config, get_time tool, loop, FastAPI service
-docs/SPEC.md       one-page technical spec
-evals/tests.sh     HTTP smoke test
-Makefile           run · ingest · eval · docker-up
-agent/ tools/ rag/ reserved for the decomposition on Days 3+
-```
+## Status
 
-The agent is one file on purpose — it is the first POC. Later days decompose it
-into `agent/`, `tools/`, and `rag/`, add real GitHub tools, RAG over the
-codebase, an eval suite, and a shadow rollout.
+Proof of concept, under active development. Ticket intake, codebase exploration, and file editing are built and verified against a live target repo and a live GitHub API. Git operations, PR creation, CI status polling, and issue comments are specified but not yet built — see [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the exact line. No CI workflow exists for this repo yet.
+
+## License
+
+MIT — see [`LICENSE`](LICENSE).
