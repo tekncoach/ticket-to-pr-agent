@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The default token is read/write on a public repo; nothing here needs to
+# write anything.
+permissions:
+  contents: read
+
+# Successive pushes to the same branch supersede each other instead of
+# queueing up.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      # Actions are pinned by commit SHA, not by tag: a tag can be moved
+      # under us, a SHA cannot. Comments carry the human-readable version.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          python-version: "3.12"
+      # Every test in evals/ is hermetic (tmp_path stands in for the target
+      # workspace, no network, no API key) — no secrets are configured or
+      # needed for this job. If a test ever needs a live key, that's the
+      # trigger to split it into its own opt-in job, not to add a repo
+      # secret here.
+      - run: uv sync --extra dev
+      - run: uv run pytest evals -q

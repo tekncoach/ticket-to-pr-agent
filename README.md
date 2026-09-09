@@ -83,7 +83,7 @@ uv run pytest evals -q
 
 ## Status
 
-Proof of concept, under active development. Ticket intake, codebase exploration, and file editing are built and verified against a live target repo and a live GitHub API. Git operations, PR creation, CI status polling, and issue comments are specified but not yet built — see [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the exact line. No CI workflow exists for this repo yet.
+Proof of concept, under active development. Ticket intake, codebase exploration, and file editing are built and verified against a live target repo and a live GitHub API. Git operations, PR creation, CI status polling, and issue comments are specified but not yet built — see [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the exact line. CI (`.github/workflows/ci.yml`) runs the full test suite on every push and pull request — no secrets required, every test is hermetic.
 
 ## License
 
