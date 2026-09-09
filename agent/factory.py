@@ -14,7 +14,6 @@ from agent.runtime import AgentRuntime, Tool
 from tools.bash import bash
 from tools.edit_file import edit_file
 from tools.fetch_ticket import fetch_ticket
-from tools.get_time import get_time
 
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
@@ -35,10 +34,10 @@ LIVE_TRACE = os.environ.get("LIVE_TRACE", "false").lower() == "true"
 
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. You can "
-    "tell the time with get_time, inspect the checked-out repo with bash "
-    "(read-only commands only: grep, cat, find, ls, head, tail, wc, pwd), "
-    "read a GitHub Issue with fetch_ticket, and edit files with "
-    "str_replace_based_edit_tool (view/create/str_replace/insert). Be concise."
+    "inspect the checked-out repo with bash (read-only commands only: grep, "
+    "cat, find, ls, head, tail, wc, pwd), read a GitHub Issue with "
+    "fetch_ticket, and edit files with str_replace_based_edit_tool "
+    "(view/create/str_replace/insert). Be concise."
 )
 
 # hello_agent.py kept two parallel structures in sync by hand: a TOOLS list
@@ -46,7 +45,6 @@ SYSTEM_PROMPT = (
 # dataclass bundles both into one object, so there's only one place to
 # register a tool instead of two that can drift apart.
 TOOLS: dict[str, Tool] = {
-    "get_time": get_time,
     "bash": bash,
     "fetch_ticket": fetch_ticket,
     "str_replace_based_edit_tool": edit_file,

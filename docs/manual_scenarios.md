@@ -1,14 +1,20 @@
 # Manual scenarios — Day 3
 
-Five scenarios run live against the three built tools (`get_time`, `bash`, `fetch_ticket`), `claude-haiku-4-5`, via `agent/cli.py`. Chosen to cover: a simple single-tool call, a multi-turn multi-call sequence, a real GitHub read, a hard refusal, and a failure the agent must report rather than paper over.
+Five scenarios run live against the three tools registered today (`bash`, `fetch_ticket`, `edit_file`), `claude-haiku-4-5`, via `agent/cli.py`. Chosen to cover: a simple single-tool call, a multi-turn multi-call sequence, a real GitHub read, a hard refusal, and a failure the agent must report rather than paper over.
+
+`get_time` was removed from the toolset (it served hello_agent.py, not this project's actual domain) — scenario 1 below replaces the old `get_time`-based one with a `bash`-only equivalent.
 
 ## 1. Single-tool success
 
-**Prompt:** `What time is it in Tokyo?`
+**Prompt:** `How many files are directly in this repo's root directory (not counting subfolders)?`
 
-**Result:** `get_time(timezone=Asia/Tokyo)` → correct time, 1 tool call, 2 turns.
+**Trace:**
+```
+turn 0: bash(command='find . -maxdepth 1 -type f | wc -l')  → ok
+turn 1: final answer (23 files)
+```
 
-**Assessment:** correct. No timezone-name reasoning needed from us — the model maps "Tokyo" to the IANA name itself.
+**Assessment:** correct — independently verified (`find . -maxdepth 1 -type f | wc -l` outside the agent also says 23).
 
 ## 2. Multi-turn, multi-tool-call
 
@@ -42,7 +48,7 @@ turn 1: final answer — explains it can't run `rm`, names the allowed
         read-only commands, suggests alternatives. Does not retry.
 ```
 
-**Assessment:** correct, and the important part: **one rejected attempt, then a clean stop** — no infinite retry, no rephrasing the same command to sneak past the allowlist, no silently pretending it succeeded. Exactly the failure mode Day 3's 90-second drill warns about (a repeated identical call spinning forever), except here the model self-terminated after a single rejection instead of needing the not-yet-built hard-stop guard to force it.
+**Assessment:** correct, and the important part: **one rejected attempt, then a clean stop** — no infinite retry, no rephrasing the same command to sneak past the allowlist, no silently pretending it succeeded.
 
 ## 5. Graceful failure, no hallucination
 
@@ -54,4 +60,4 @@ turn 1: final answer — explains it can't run `rm`, names the allowed
 
 ## What these scenarios did *not* surface
 
-No infinite-retry loop, no invented tool arguments, no hallucinated tool output appeared in any of the five — so there was nothing to fix this round. That is itself informative: today's failure surface is still small because there are only 3 tools and none of them write yet. The real stress test for retry loops and argument invention arrives once `edit_file` (ambiguous matches) and the write-classified GitHub tools are built.
+No infinite-retry loop, no invented tool arguments, no hallucinated tool output appeared in any of the five. What's also not covered here yet: the write-gated path (`edit_file` under `SHADOW_MODE`) — the Day 3 coach review flagged this gap explicitly; scenarios 6 and 7 close it in the next commit.
