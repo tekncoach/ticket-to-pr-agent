@@ -3,29 +3,35 @@
 Pure and deterministic — no LLM call, no live service, no key required. This is
 the "test the non-LLM pieces" rubric line: exactly the unit you can pin down
 without a model in the loop.
+
+Targets tools.get_time (the Tool actually registered in agent/cli.py), not
+hello_agent.py's original version — that one predates the Tool/ToolResult
+contract and returned a bare string instead of a ToolResult.
 """
 
 from datetime import datetime
 
-import hello_agent
+from tools.get_time import get_time
 
 
 def test_default_is_utc():
-    result = hello_agent.get_time({})
-    offset = datetime.fromisoformat(result).utcoffset()
+    result = get_time.handler({})
+    assert result.ok
+    offset = datetime.fromisoformat(result.data).utcoffset()
     assert offset is not None
     assert offset.total_seconds() == 0
 
 
 def test_valid_iana_zone():
-    result = hello_agent.get_time({"timezone": "Europe/Paris"})
-    offset = datetime.fromisoformat(result).utcoffset()
+    result = get_time.handler({"timezone": "Europe/Paris"})
+    assert result.ok
+    offset = datetime.fromisoformat(result.data).utcoffset()
     assert offset is not None
     # Paris is UTC+1 (winter) or UTC+2 (summer/DST).
     assert offset.total_seconds() in (3600, 7200)
 
 
-def test_unknown_zone_returns_error_string():
-    result = hello_agent.get_time({"timezone": "Mars/Olympus"})
-    assert result.startswith("Error:")
-    assert "Mars/Olympus" in result
+def test_unknown_zone_is_a_structured_failure():
+    result = get_time.handler({"timezone": "Mars/Olympus"})
+    assert not result.ok
+    assert result.error_code == "unknown_timezone"
