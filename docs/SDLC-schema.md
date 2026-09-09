@@ -30,16 +30,19 @@ pipeline this project is heading toward over the next few days. Legend:
      ┌──────────────────────────────────────┐            │  MAX_TURNS)
      │ 5. LINT / FORMAT   lint_check       🔮 │            │
      │    (production-pipeline reference)     │            │
+     │    → returns a short summary only      │            │
      └────────────────┬───────────────────────┘            │
                        ▼                                    │
      ┌──────────────────────────────────────┐              │
      │ 6. TYPE CHECK      type_check       🔮 │              │
      │    (production-pipeline reference)     │              │
+     │    → returns a short summary only      │              │
      └────────────────┬───────────────────────┘              │
                        ▼                                      │
      ┌──────────────────────────────────────┐                │
      │ 7. TEST            run_tests           │────────────────┘
      │    run the suite locally               │
+     │    → returns a short summary only      │
      └────────────────┬───────────────────────┘
                        │ all green
                        ▼
@@ -72,6 +75,17 @@ type-check, and coverage stay CI-only for now... we do not pre-add
 controls whose need we have not measured."* They're drawn here because
 the production pipeline this project is heading toward will want them as
 local gates — not because the Day 3 POC agent runs them today.
+
+**Steps 5, 6, 7 (lint, type-check, test) return a summary only — never
+raw tool output into the agent's context.** A full `pytest` run or a
+linter pass over dozens of files can be thousands of tokens of noise;
+none of it is decision-relevant to the model beyond "did it pass, and
+if not, what and where." Each of these tools' `ToolResult.data` should
+be a condensed result — pass/fail counts, the list of failing test
+names, a short error snippet per failure — not the raw stdout dump.
+This is a contract for whoever builds `run_tests` (this sprint) and
+`lint_check` / `type_check` (production pipeline): summarize inside the
+tool, before it ever reaches the model.
 
 **`git_commit_and_push` was one tool in the original SPEC; split into
 `git_commit` + `git_push` here.** One mega-tool bundling two different
