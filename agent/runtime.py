@@ -34,19 +34,20 @@ class AgentRuntime:
         trace = []
         for turn in range(self.max_turns):
             t0 = time.time()
-            resp = self._llm(messages, tools=self._openai_tools())
+            resp = self._llm(messages, tools=self._anthropic_tools())
             trace.append({"event": "llm_call", "ms": (time.time()-t0)*1000, "turn": turn})
             # if tool_calls: validate, gate side effects, append tool results
             # else: return final content + trace
             ...
         return {"error": "max_turns", "trace": trace}
 
-    def _openai_tools(self) -> list[dict]:
+    def _anthropic_tools(self) -> list[dict]:
+        # Anthropic's Messages API takes tools flat: no "type": "function"
+        # wrapper, and the JSON Schema key is "input_schema", not
+        # "parameters". Tool.parameters is our own field name; it becomes
+        # input_schema only in the dict we hand to the API.
         return [{
-            "type": "function",
-            "function": {
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
-            }
+            "name": t.name,
+            "description": t.description,
+            "input_schema": t.parameters,
         } for t in self.tools.values()]
