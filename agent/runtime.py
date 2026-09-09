@@ -96,11 +96,29 @@ class AgentRuntime:
             trace.append({
                 "event": "llm_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
                 "latency_ms": (time.time() - t0) * 1000,
-                "model": self.model,
+                "message_id": resp.id,
+                "model": self.model,             # what we requested (may be an alias)
+                "model_resolved": resp.model,    # the actual pinned snapshot Anthropic used
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
+                # Included WITHIN output_tokens, not additive — a breakdown for
+                # observability, not a separate cost line. Always None today:
+                # we never request thinking (Haiku 4.5 needs it enabled
+                # explicitly, unlike newer models where it's the default).
+                "thinking_tokens": (usage.output_tokens_details.thinking_tokens
+                                    if usage.output_tokens_details else None),
+                # Always 0 today — no cache_control breakpoints anywhere yet,
+                # despite the system prompt + tool schemas being identical
+                # every turn of a run: a real, unexploited caching win.
+                "cache_creation_input_tokens": usage.cache_creation_input_tokens,
+                "cache_read_input_tokens": usage.cache_read_input_tokens,
+                "service_tier": usage.service_tier,
                 "cost_usd": _cost_usd(self.model, usage.input_tokens, usage.output_tokens),
                 "stop_reason": resp.stop_reason,
+                # Only ever non-null when stop_reason == "refusal" — without
+                # logging it, a refusal would pass through as an unremarkable
+                # final answer with no record of why.
+                "stop_details": resp.stop_details.model_dump() if resp.stop_details else None,
             })
 
             # Echo the assistant's own turn back into the history verbatim —
