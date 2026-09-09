@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 import sys
 
+from agent.event_sink import JSONLFileSink, MultiSink, StdoutSink
 from agent.runtime import AgentRuntime, Tool
 from tools.bash import bash
 from tools.edit_file import edit_file
@@ -36,6 +37,10 @@ SHADOW_MODE = os.environ.get("SHADOW_MODE", "true").lower() == "true"
 # max_tokens > THINKING_BUDGET_TOKENS, checked in AgentRuntime.__post_init__.
 THINKING_ENABLED = os.environ.get("THINKING_ENABLED", "false").lower() == "true"
 THINKING_BUDGET_TOKENS = int(os.environ.get("THINKING_BUDGET_TOKENS", "2048"))
+# Off by default: the JSONL file is always written (JSONLFileSink). Setting
+# this also prints each event live to stdout as it happens — hello_agent.py's
+# own "debug a loop you cannot see" technique.
+LIVE_TRACE = os.environ.get("LIVE_TRACE", "false").lower() == "true"
 
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. You can "
@@ -63,11 +68,13 @@ def main() -> None:
         raise SystemExit(1)
 
     user_msg = sys.argv[1]
+    logger = MultiSink(JSONLFileSink(), StdoutSink()) if LIVE_TRACE else JSONLFileSink()
     runtime = AgentRuntime(
         model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
         max_tokens=MAX_TOKENS, max_turns=MAX_TURNS,
         allow_side_effects=not SHADOW_MODE,
         thinking_enabled=THINKING_ENABLED, thinking_budget_tokens=THINKING_BUDGET_TOKENS,
+        logger=logger,
     )
     result = runtime.run(user_msg)
     print(result)

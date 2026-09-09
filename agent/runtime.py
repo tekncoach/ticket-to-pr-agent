@@ -8,7 +8,7 @@ import json, os, time, uuid
 import anthropic
 import jsonschema
 
-from agent.config import SESSIONS_DIR
+from agent.event_sink import EventSink, JSONLFileSink
 
 # $/MTok, (input, output). Cached prices — verify against
 # platform.claude.com/docs before trusting if this file is more than a
@@ -80,6 +80,11 @@ class AgentRuntime:
     # budget_tokens path (Haiku-style models); adaptive models ignore it.
     thinking_enabled: bool = False
     thinking_budget_tokens: int = 2048
+    # Where each trace event goes. Default: JSONL file per run under
+    # SESSIONS_DIR. Swap for NullSink in tests (no file writes), StdoutSink
+    # for live output, or MultiSink(JSONLFileSink(), StdoutSink()) for both —
+    # see agent/event_sink.py.
+    logger: EventSink = field(default_factory=JSONLFileSink)
 
     def __post_init__(self) -> None:
         # Built once per AgentRuntime instance, not once per call — the SDK
@@ -115,16 +120,15 @@ class AgentRuntime:
 
         def emit(event: dict) -> None:
             # Single point of truth: every event is recorded in-memory AND
-            # persisted immediately, never buffered until run() returns. If
-            # self._llm() raises (no try/except around it today — a real
-            # gap, e.g. a network timeout or 5xx mid-run) the whole process
-            # dies right there; buffering until the end would lose every
-            # event from a run that had otherwise been working. Immediate
-            # append + flush + fsync survives that, and a `kill -9` or power
-            # loss too — the same reason Claude Code's own session JSONL
-            # files under ~/.claude/projects/ are written incrementally.
+            # sent to self.logger immediately, never buffered until run()
+            # returns. If self._llm() raises (no try/except around it
+            # today — a real gap, e.g. a network timeout or 5xx mid-run)
+            # the whole process dies right there; buffering until the end
+            # would lose every event from a run that had otherwise been
+            # working. JSONLFileSink's immediate flush + fsync survives
+            # that, and a `kill -9` or power loss too.
             trace.append(event)
-            self._persist_event(run_id, event)
+            self.logger.emit(run_id, event)
 
         # Day 3's drill, verbatim: a repeated identical tool call is a spin,
         # not progress. The loop has no memory of its own otherwise — this
@@ -256,15 +260,6 @@ class AgentRuntime:
             messages.append({"role": "user", "content": tool_results})
 
         return {"run_id": run_id, "error": "max_turns", "trace": trace}
-
-    @staticmethod
-    def _persist_event(run_id: str, event: dict) -> None:
-        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
-        path = SESSIONS_DIR / f"{run_id}.jsonl"
-        with open(path, "a") as f:
-            f.write(json.dumps(event, default=str) + "\n")
-            f.flush()
-            os.fsync(f.fileno())  # survives a crash or kill -9, not just an exception
 
     @staticmethod
     def _validate_args(tool: Tool, args: dict) -> str | None:
