@@ -7,6 +7,10 @@
 # Reads one Issue's title + body as the ticket spec. Whether the issue
 # actually carries `agent:ready` is the trigger's job (SPEC.md's Trigger
 # section), not this tool's — fetch_ticket just reads the issue it's given.
+#
+# title/body are redacted (agent.secrets_redaction) before being returned —
+# an Issue is written by anyone, untrusted input, and could contain a
+# pasted secret used as a repro example. See docs/SECRETS-REDACTION.md.
 from __future__ import annotations
 
 import os
@@ -15,6 +19,7 @@ import httpx
 
 from agent.config import REPO
 from agent.runtime import Tool, ToolResult
+from agent.secrets_redaction import redact_secrets
 
 GITHUB_API = "https://api.github.com"
 
@@ -51,7 +56,10 @@ def _handler(arguments: dict) -> ToolResult:
     if not body:
         return ToolResult(ok=False, error_code="empty_body")
 
-    return ToolResult(ok=True, data={"title": data.get("title", ""), "body": body})
+    return ToolResult(ok=True, data={
+        "title": redact_secrets(data.get("title", "")),
+        "body": redact_secrets(body),
+    })
 
 
 fetch_ticket = Tool(

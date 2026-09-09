@@ -2,7 +2,7 @@
 
 A coding agent that turns a labeled GitHub Issue into a tested, CI-ready pull request — built directly on Anthropic's Messages API, with no agent framework in between.
 
-![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
+[![CI](https://github.com/tekncoach/ticket-to-pr-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tekncoach/ticket-to-pr-agent/actions/workflows/ci.yml) ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
 ## What it does
 
@@ -37,6 +37,12 @@ The first four stages are built and tested against a live target repo; the rest 
 ```bash
 # Install dependencies
 uv sync --extra dev
+
+# Optional but recommended: betterleaks, for redacting secrets found in
+# fetched ticket content (an external binary, not a Python package —
+# see docs/SECRETS-REDACTION.md). Without it, fetch_ticket still works,
+# with narrower redaction coverage.
+brew install betterleaks   # or the Linux equivalent
 
 # Configure — copy the template and fill in real values (.env is gitignored)
 cp .env.example .env
