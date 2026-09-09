@@ -34,6 +34,12 @@ class AgentRuntime:
     max_turns: int = 8
     max_tokens: int = 1024
     allow_side_effects: bool = False
+    # Policy guard, not a performance feature: caps how many tool_use blocks
+    # in a single turn actually get executed. Calls beyond the cap still get
+    # a tool_result (every tool_use needs one), just an error one — Claude's
+    # own guidance warns that dropping a tool_result silently trains it to
+    # stop using parallel calls at all.
+    max_parallel_tool_calls: int = 3
 
     def __post_init__(self) -> None:
         # Built once per AgentRuntime instance, not once per call — the SDK
@@ -74,24 +80,32 @@ class AgentRuntime:
             # once. Every tool_use block needs exactly one tool_result block
             # back, and ALL of them travel together in a single user message —
             # not one message per result.
+            tool_use_blocks = [b for b in resp.content if b.type == "tool_use"]
             tool_results = []
-            for block in resp.content:
-                if block.type != "tool_use":
-                    continue  # a text block can sit alongside tool_use in the same turn
-
+            for i, block in enumerate(tool_use_blocks):
                 trace.append({
                     "event": "tool_call", "turn": turn,
                     "tool": block.name, "args": block.input,
                 })
 
-                tool = self.tools.get(block.name)  # .get(), not [block.name]:
-                if tool is None:                   # a hallucinated tool name
-                    result = ToolResult(ok=False, error_code="unknown_tool")
+                if i >= self.max_parallel_tool_calls:
+                    # Still executed sequentially today (see docs/SDLC-schema.md
+                    # for why we haven't parallelized read-only calls yet) — this
+                    # cap exists so a single turn can't trigger an unbounded
+                    # number of side effects/subprocess spawns/API calls, not to
+                    # manage concurrency that doesn't exist yet.
+                    result = ToolResult(ok=False, error_code="too_many_parallel_calls")
                 else:
-                    try:
-                        result = tool.handler(block.input)
-                    except Exception as exc:  # a broken handler must not crash the run
-                        result = ToolResult(ok=False, error_code=f"handler_error: {exc}")
+                    tool = self.tools.get(block.name)  # .get(), not [block.name]:
+                    if tool is None:                   # a hallucinated tool name
+                        result = ToolResult(ok=False, error_code="unknown_tool")
+                    elif tool.side_effect and not self.allow_side_effects:
+                        result = ToolResult(ok=False, error_code="side_effect_not_allowed")
+                    else:
+                        try:
+                            result = tool.handler(block.input)
+                        except Exception as exc:  # a broken handler must not crash the run
+                            result = ToolResult(ok=False, error_code=f"handler_error: {exc}")
 
                 trace.append({
                     "event": "tool_result", "turn": turn,
