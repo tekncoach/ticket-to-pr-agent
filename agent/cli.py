@@ -2,7 +2,11 @@
 #
 # Minimal entrypoint: build an AgentRuntime with one tool and run it.
 #
-#   uv run python -m agent.cli "what time is it in Paris?"
+#   uv run --env-file .env python -m agent.cli "what time is it in Paris?"
+#
+# --env-file is not optional: uv does NOT auto-load .env (that was a wrong
+# assumption, corrected after testing) — without the flag, __post_init__
+# raises "LLM_API_KEY is not set" before anything runs.
 #
 # No FastAPI, no uvicorn, no curl. This exists purely to exercise
 # AgentRuntime.run() while we build out the loop body — the fast path,

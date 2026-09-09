@@ -41,17 +41,73 @@ class AgentRuntime:
         # Anthropic takes the system prompt as its own messages.create(system=...)
         # kwarg, not as a {"role": "system"} entry in the messages list — that
         # role is invalid there. self.system is passed straight through in _llm.
-        messages = [
+        messages: list[dict] = [
             {"role": "user", "content": user_msg},
         ]
         trace = []
         for turn in range(self.max_turns):
             t0 = time.time()
             resp = self._llm(messages, tools=self._anthropic_tools())
-            trace.append({"event": "llm_call", "ms": (time.time()-t0)*1000, "turn": turn})
-            # if tool_calls: validate, gate side effects, append tool results
-            # else: return final content + trace
-            ...
+            trace.append({"event": "llm_call", "ms": (time.time() - t0) * 1000, "turn": turn})
+
+            # Echo the assistant's own turn back into the history verbatim —
+            # without this, messages never grows and the model has amnesia
+            # every turn. resp.content is already the right shape (a list of
+            # block objects); the SDK accepts it straight back on the next call.
+            messages.append({"role": "assistant", "content": resp.content})
+
+            if resp.stop_reason != "tool_use":
+                # No tool call this turn: whatever text came back is the answer.
+                final_text = "".join(
+                    block.text for block in resp.content if block.type == "text"
+                )
+                trace.append({"event": "final", "turn": turn})
+                return {"answer": final_text, "trace": trace}
+
+            # stop_reason == "tool_use": one turn can ask for several tools at
+            # once. Every tool_use block needs exactly one tool_result block
+            # back, and ALL of them travel together in a single user message —
+            # not one message per result.
+            tool_results = []
+            for block in resp.content:
+                if block.type != "tool_use":
+                    continue  # a text block can sit alongside tool_use in the same turn
+
+                trace.append({
+                    "event": "tool_call", "turn": turn,
+                    "tool": block.name, "args": block.input,
+                })
+
+                tool = self.tools.get(block.name)  # .get(), not [block.name]:
+                if tool is None:                   # a hallucinated tool name
+                    result = ToolResult(ok=False, error_code="unknown_tool")
+                else:
+                    try:
+                        result = tool.handler(block.input)
+                    except Exception as exc:  # a broken handler must not crash the run
+                        result = ToolResult(ok=False, error_code=f"handler_error: {exc}")
+
+                trace.append({
+                    "event": "tool_result", "turn": turn,
+                    "tool": block.name, "ok": result.ok,
+                })
+
+                if not result.ok:
+                    content = result.error_code or "error"
+                elif isinstance(result.data, str):
+                    content = result.data  # already text — don't double-encode it
+                else:
+                    content = json.dumps(result.data)
+
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": content,
+                    "is_error": not result.ok,
+                })
+
+            messages.append({"role": "user", "content": tool_results})
+
         return {"error": "max_turns", "trace": trace}
 
     def _llm(self, messages: list[dict], tools: list[dict]) -> anthropic.types.Message:
