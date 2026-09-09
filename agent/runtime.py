@@ -16,7 +16,7 @@ class ToolResult:
 class Tool:
     name: str
     description: str
-    parameters: dict  # JSON Schema
+    input_schema: dict  # JSON Schema — Anthropic's own field name, no translation needed
     handler: Callable[[dict], ToolResult]
     side_effect: bool = False
 
@@ -65,11 +65,9 @@ class AgentRuntime:
 
     def _anthropic_tools(self) -> list[dict]:
         # Anthropic's Messages API takes tools flat: no "type": "function"
-        # wrapper, and the JSON Schema key is "input_schema", not
-        # "parameters". Tool.parameters is our own field name; it becomes
-        # input_schema only in the dict we hand to the API.
+        # wrapper around name/description/input_schema.
         return [{
             "name": t.name,
             "description": t.description,
-            "input_schema": t.parameters,
+            "input_schema": t.input_schema,
         } for t in self.tools.values()]

@@ -24,7 +24,7 @@ def _handler(arguments: dict) -> ToolResult:
 get_time = Tool(
     name="get_time",
     description="Return the current time as an ISO-8601 timestamp in the given IANA timezone.",
-    parameters={
+    input_schema={
         "type": "object",
         "properties": {
             "timezone": {
