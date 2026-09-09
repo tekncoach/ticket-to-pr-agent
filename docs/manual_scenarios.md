@@ -1,6 +1,6 @@
 # Manual scenarios — Day 3
 
-Five scenarios run live against the three tools registered today (`bash`, `fetch_ticket`, `edit_file`), `claude-haiku-4-5`, via `agent/cli.py`. Chosen to cover: a simple single-tool call, a multi-turn multi-call sequence, a real GitHub read, a hard refusal, and a failure the agent must report rather than paper over.
+Seven scenarios run live against the three tools registered today (`bash`, `fetch_ticket`, `edit_file`), `claude-haiku-4-5`, via `agent/cli.py`. Chosen to cover: a simple single-tool call, a multi-turn multi-call sequence, a real GitHub read, a hard refusal, a failure the agent must report rather than paper over, and — added after the coach's Day 3 review flagged that no scenario exercised the write-gated tool — a blocked write and a real one.
 
 `get_time` was removed from the toolset (it served hello_agent.py, not this project's actual domain) — scenario 1 below replaces the old `get_time`-based one with a `bash`-only equivalent.
 
@@ -58,6 +58,36 @@ turn 1: final answer — explains it can't run `rm`, names the allowed
 
 **Assessment:** correct. This is the case a badly-prompted agent gets wrong most often — filling in a confident, fabricated answer instead of surfacing the tool's own failure signal.
 
+## 6. Write blocked by SHADOW_MODE (added post-review)
+
+**Prompt:** `Use the str_replace_based_edit_tool to insert the line '# test-scenario-marker' at line 0 of CHANGELOG.md.`
+
+**Trace (SHADOW_MODE=true, the default):**
+```
+turn 0: str_replace_based_edit_tool(command=insert, path=CHANGELOG.md, insert_line=0, ...)
+        → rejected: side_effect_not_allowed
+turn 1: final answer — explains it lacks permission, suggests bash instead
+        (bash would also reject it — sed isn't on the allowlist — but that
+        wasn't tested here, the model's own incorrect suggestion)
+```
+
+**Verified independently:** `CHANGELOG.md` on disk was untouched after this run.
+
+**Assessment:** correct — the write gate holds under the default, safe configuration.
+
+## 7. Write actually succeeding (added post-review)
+
+**Same prompt, `SHADOW_MODE=false`:**
+```
+turn 0: str_replace_based_edit_tool(command=insert, path=CHANGELOG.md, insert_line=0, ...)
+        → ok
+turn 1: final answer — confirms the insert
+```
+
+**Verified independently:** `CHANGELOG.md` on disk now started with `# test-scenario-marker` — a real write, not a claimed one. Reverted afterward (`git checkout -- CHANGELOG.md` in the target repo clone); this was a test artifact, not a real content change.
+
+**Assessment:** correct — same tool, same code path as scenario 6, only the gate's configuration differs, and the outcome flips exactly as designed. Scenarios 6 and 7 together are the demonstrated pass/fail pair the Day 3 coach review asked for.
+
 ## What these scenarios did *not* surface
 
-No infinite-retry loop, no invented tool arguments, no hallucinated tool output appeared in any of the five. What's also not covered here yet: the write-gated path (`edit_file` under `SHADOW_MODE`) — the Day 3 coach review flagged this gap explicitly; scenarios 6 and 7 close it in the next commit.
+No infinite-retry loop, no invented tool arguments, no hallucinated tool output, and no case where the write gate was bypassed. That is itself informative: the gate is doing its job, not merely existing unexercised. `edit_file`'s `ambiguous_match` path and the path-escape/denylist guards are covered by `evals/test_edit_file_tool.py` instead of another manual scenario — exactly the kind of regression a red test should catch, not a doc that says it was checked once.
