@@ -1,4 +1,4 @@
-.PHONY: agent run ingest eval docker-up
+.PHONY: agent run mcp-server ingest eval docker-up
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -10,6 +10,11 @@ agent:
 # Same AgentRuntime as `make agent` — agent/factory.py builds both.
 run:
 	uv run --env-file .env uvicorn agent.service:app --reload
+
+# Start the MCP server exposing fetch_ticket — unrelated to agent/runtime.py,
+# see docs/MCP-SERVER.md. Listens on http://127.0.0.1:8765/mcp.
+mcp-server:
+	uv run --env-file .env python -m agent.mcp_server
 
 # Ingest the liberty-rider corpus into the vector store (real on Day 4).
 ingest:

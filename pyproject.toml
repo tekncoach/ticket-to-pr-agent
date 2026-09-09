@@ -28,6 +28,7 @@ dependencies = [
     # learn — unlike the GitHub calls, reinventing a JSON Schema validator
     # would just be reinventing a solved problem).
     "jsonschema>=4.23",
+    "mcp[cli]>=2.2.0",
 ]
 
 [project.optional-dependencies]
