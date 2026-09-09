@@ -19,9 +19,11 @@ import sys
 from agent.runtime import AgentRuntime, Tool
 from tools.get_time import get_time
 
-# Same env-var name and default as hello_agent.py's LLM_MODEL, so the two
-# entrypoints stay configured the same way.
+# Same env-var names and defaults as hello_agent.py, so the two entrypoints
+# stay configured the same way.
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
+MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
+MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
 
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. For now the "
@@ -42,7 +44,10 @@ def main() -> None:
         raise SystemExit(1)
 
     user_msg = sys.argv[1]
-    runtime = AgentRuntime(model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT)
+    runtime = AgentRuntime(
+        model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
+        max_tokens=MAX_TOKENS, max_turns=MAX_TURNS,
+    )
     result = runtime.run(user_msg)
     print(result)
 
