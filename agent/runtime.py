@@ -139,7 +139,33 @@ class AgentRuntime:
         seen_calls: set[tuple[str, str]] = set()
         for turn in range(self.max_turns):
             t0 = time.time()
-            resp = self._llm(messages, tools=self._anthropic_tools())
+            try:
+                resp = self._llm(messages, tools=self._anthropic_tools())
+            except anthropic.APIError as exc:
+                # Covers APIConnectionError (network/timeout), APIStatusError
+                # and its subclasses (RateLimitError, InternalServerError —
+                # the "network timeout or 5xx" the Day 3 review named) —
+                # anything the SDK itself classifies as an API-layer failure.
+                # Deliberately NOT a bare `except Exception`: a real bug in
+                # our own code (e.g. a KeyError in _anthropic_tools) should
+                # still crash loudly, not be absorbed into "the LLM failed."
+                # No retry/backoff here — that is Day 5's job by name
+                # ("Error handling, retries, and real integration"); this is
+                # the minimum so a transient failure is a bounded, reported
+                # outcome instead of an uncaught exception with no final event.
+                emit({
+                    "event": "llm_call_error", "run_id": run_id, "ts": _now_iso(),
+                    "turn": turn, "error_type": type(exc).__name__, "error": str(exc),
+                })
+                return {
+                    "run_id": run_id,
+                    "error": "llm_call_failed",
+                    "answer": (
+                        f"Stopping: the model call failed ({type(exc).__name__}). "
+                        "No retry attempted here — that is Day 5's job."
+                    ),
+                    "trace": trace,
+                }
             usage = resp.usage
             emit({
                 "event": "llm_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
