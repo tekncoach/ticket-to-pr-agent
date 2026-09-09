@@ -1,11 +1,34 @@
 # agent/runtime.py skeleton
 from __future__ import annotations
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Callable
-import json, os, time
+import json, os, time, uuid
 
 import anthropic
 import jsonschema
+
+# $/MTok, (input, output). Cached prices — verify against
+# platform.claude.com/docs before trusting if this file is more than a
+# few months old. Unknown models return cost_usd=None rather than a
+# guessed number.
+MODEL_PRICES_PER_MTOK = {
+    "claude-haiku-4-5": (1.00, 5.00),
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-opus-5": (5.00, 25.00),
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _cost_usd(model: str, input_tokens: int, output_tokens: int) -> float | None:
+    prices = MODEL_PRICES_PER_MTOK.get(model)
+    if prices is None:
+        return None
+    in_price, out_price = prices
+    return (input_tokens * in_price + output_tokens * out_price) / 1_000_000
 
 @dataclass
 class ToolResult:
@@ -58,6 +81,7 @@ class AgentRuntime:
             {"role": "user", "content": user_msg},
         ]
         trace = []
+        run_id = uuid.uuid4().hex[:12]
         # Day 3's drill, verbatim: a repeated identical tool call is a spin,
         # not progress. The loop has no memory of its own otherwise — this
         # set is that memory, scoped to this run only. Known future
@@ -68,7 +92,16 @@ class AgentRuntime:
         for turn in range(self.max_turns):
             t0 = time.time()
             resp = self._llm(messages, tools=self._anthropic_tools())
-            trace.append({"event": "llm_call", "ms": (time.time() - t0) * 1000, "turn": turn})
+            usage = resp.usage
+            trace.append({
+                "event": "llm_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
+                "latency_ms": (time.time() - t0) * 1000,
+                "model": self.model,
+                "input_tokens": usage.input_tokens,
+                "output_tokens": usage.output_tokens,
+                "cost_usd": _cost_usd(self.model, usage.input_tokens, usage.output_tokens),
+                "stop_reason": resp.stop_reason,
+            })
 
             # Echo the assistant's own turn back into the history verbatim —
             # without this, messages never grows and the model has amnesia
@@ -81,8 +114,8 @@ class AgentRuntime:
                 final_text = "".join(
                     block.text for block in resp.content if block.type == "text"
                 )
-                trace.append({"event": "final", "turn": turn})
-                return {"answer": final_text, "trace": trace}
+                trace.append({"event": "final", "run_id": run_id, "ts": _now_iso(), "turn": turn})
+                return {"run_id": run_id, "answer": final_text, "trace": trace}
 
             # stop_reason == "tool_use": one turn can ask for several tools at
             # once. Every tool_use block needs exactly one tool_result block
@@ -92,7 +125,7 @@ class AgentRuntime:
             tool_results = []
             for i, block in enumerate(tool_use_blocks):
                 trace.append({
-                    "event": "tool_call", "turn": turn,
+                    "event": "tool_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
                     "tool": block.name, "args": block.input,
                 })
 
@@ -102,8 +135,12 @@ class AgentRuntime:
                     # gives the model a chance to try again, which is exactly
                     # the spin we're stopping — it already got this identical
                     # call's outcome once, sending it back changes nothing.
-                    trace.append({"event": "duplicate_call_stop", "turn": turn, "tool": block.name})
+                    trace.append({
+                        "event": "duplicate_call_stop", "run_id": run_id, "ts": _now_iso(),
+                        "turn": turn, "tool": block.name,
+                    })
                     return {
+                        "run_id": run_id,
                         "error": "duplicate_tool_call",
                         "answer": (
                             f"Stopping: repeated an identical call to {block.name} "
@@ -136,8 +173,8 @@ class AgentRuntime:
                             result = ToolResult(ok=False, error_code=f"handler_error: {exc}")
 
                 trace.append({
-                    "event": "tool_result", "turn": turn,
-                    "tool": block.name, "ok": result.ok,
+                    "event": "tool_result", "run_id": run_id, "ts": _now_iso(), "turn": turn,
+                    "tool": block.name, "ok": result.ok, "error_code": result.error_code,
                 })
 
                 if not result.ok:
@@ -156,7 +193,7 @@ class AgentRuntime:
 
             messages.append({"role": "user", "content": tool_results})
 
-        return {"error": "max_turns", "trace": trace}
+        return {"run_id": run_id, "error": "max_turns", "trace": trace}
 
     @staticmethod
     def _validate_args(tool: Tool, args: dict) -> str | None:
