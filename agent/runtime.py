@@ -8,6 +8,8 @@ import json, os, time, uuid
 import anthropic
 import jsonschema
 
+from agent.config import SESSIONS_DIR
+
 # $/MTok, (input, output). Cached prices — verify against
 # platform.claude.com/docs before trusting if this file is more than a
 # few months old. Unknown models return cost_usd=None rather than a
@@ -110,6 +112,20 @@ class AgentRuntime:
         ]
         trace = []
         run_id = uuid.uuid4().hex[:12]
+
+        def emit(event: dict) -> None:
+            # Single point of truth: every event is recorded in-memory AND
+            # persisted immediately, never buffered until run() returns. If
+            # self._llm() raises (no try/except around it today — a real
+            # gap, e.g. a network timeout or 5xx mid-run) the whole process
+            # dies right there; buffering until the end would lose every
+            # event from a run that had otherwise been working. Immediate
+            # append + flush + fsync survives that, and a `kill -9` or power
+            # loss too — the same reason Claude Code's own session JSONL
+            # files under ~/.claude/projects/ are written incrementally.
+            trace.append(event)
+            self._persist_event(run_id, event)
+
         # Day 3's drill, verbatim: a repeated identical tool call is a spin,
         # not progress. The loop has no memory of its own otherwise — this
         # set is that memory, scoped to this run only. Known future
@@ -121,7 +137,7 @@ class AgentRuntime:
             t0 = time.time()
             resp = self._llm(messages, tools=self._anthropic_tools())
             usage = resp.usage
-            trace.append({
+            emit({
                 "event": "llm_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
                 "latency_ms": (time.time() - t0) * 1000,
                 "message_id": resp.id,
@@ -160,7 +176,7 @@ class AgentRuntime:
                 final_text = "".join(
                     block.text for block in resp.content if block.type == "text"
                 )
-                trace.append({"event": "final", "run_id": run_id, "ts": _now_iso(), "turn": turn})
+                emit({"event": "final", "run_id": run_id, "ts": _now_iso(), "turn": turn})
                 return {"run_id": run_id, "answer": final_text, "trace": trace}
 
             # stop_reason == "tool_use": one turn can ask for several tools at
@@ -170,7 +186,7 @@ class AgentRuntime:
             tool_use_blocks = [b for b in resp.content if b.type == "tool_use"]
             tool_results = []
             for i, block in enumerate(tool_use_blocks):
-                trace.append({
+                emit({
                     "event": "tool_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
                     "tool": block.name, "args": block.input,
                 })
@@ -181,7 +197,7 @@ class AgentRuntime:
                     # gives the model a chance to try again, which is exactly
                     # the spin we're stopping — it already got this identical
                     # call's outcome once, sending it back changes nothing.
-                    trace.append({
+                    emit({
                         "event": "duplicate_call_stop", "run_id": run_id, "ts": _now_iso(),
                         "turn": turn, "tool": block.name,
                     })
@@ -218,7 +234,7 @@ class AgentRuntime:
                         except Exception as exc:  # a broken handler must not crash the run
                             result = ToolResult(ok=False, error_code=f"handler_error: {exc}")
 
-                trace.append({
+                emit({
                     "event": "tool_result", "run_id": run_id, "ts": _now_iso(), "turn": turn,
                     "tool": block.name, "ok": result.ok, "error_code": result.error_code,
                 })
@@ -240,6 +256,15 @@ class AgentRuntime:
             messages.append({"role": "user", "content": tool_results})
 
         return {"run_id": run_id, "error": "max_turns", "trace": trace}
+
+    @staticmethod
+    def _persist_event(run_id: str, event: dict) -> None:
+        SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+        path = SESSIONS_DIR / f"{run_id}.jsonl"
+        with open(path, "a") as f:
+            f.write(json.dumps(event, default=str) + "\n")
+            f.flush()
+            os.fsync(f.fileno())  # survives a crash or kill -9, not just an exception
 
     @staticmethod
     def _validate_args(tool: Tool, args: dict) -> str | None:

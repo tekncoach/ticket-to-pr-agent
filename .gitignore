@@ -28,3 +28,7 @@ data/*
 # Playwright MCP scratch
 .playwright-mcp/
 workspace/
+
+# Per-run session logs (JSONL, one file per run_id) — local debugging/eval
+# fodder, not source
+tmp/

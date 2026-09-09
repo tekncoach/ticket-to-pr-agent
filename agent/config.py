@@ -19,3 +19,11 @@ REPO = os.environ.get("TARGET_REPO", "tekncoach/liberty-rider-myroadtrips")
 # if it ever needs to live somewhere else.
 _default_workspace = Path(__file__).resolve().parent.parent / "workspace" / REPO.split("/")[-1]
 WORKSPACE = Path(os.environ.get("TARGET_WORKSPACE", str(_default_workspace)))
+
+# Per-run structured logs: one JSONL file per run_id, tmp/sessions/<run_id>.jsonl.
+# One project (this repo) -> one directory is enough; no <project>/<session>
+# nesting the way ~/.claude/projects/ needs, since that pattern exists to
+# disambiguate between many projects sharing one global log root, a problem
+# we don't have.
+_default_sessions_dir = Path(__file__).resolve().parent.parent / "tmp" / "sessions"
+SESSIONS_DIR = Path(os.environ.get("SESSIONS_DIR", str(_default_sessions_dir)))
