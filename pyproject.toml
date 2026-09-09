@@ -16,6 +16,11 @@ dependencies = [
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
+    # GitHub REST calls, hand-written (SPEC.md's POC default — PyGithub is
+    # the named production upgrade, not needed yet). Already a dev
+    # dependency (FastAPI's TestClient); promoted here since fetch_ticket
+    # needs it at runtime too, not just in tests.
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -27,7 +32,7 @@ rag = [
 ]
 dev = [
     "pytest>=8.3",
-    "httpx>=0.27",
+    # httpx moved to main dependencies — still used here by FastAPI's TestClient.
 ]
 
 # Single-file POC for now: this is an application, not an installable library,
