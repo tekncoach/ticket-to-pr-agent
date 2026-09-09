@@ -11,6 +11,12 @@
 # through, and cwd is pinned to workspace/ so a command can't reach the
 # rest of the machine.
 #
+# One exception to "reject every operator": a plain pipe (`|`) between
+# allowed, read-only executables (e.g. `find ... | wc -l`) isn't actually
+# dangerous, so we build the pipeline ourselves with chained subprocess.Popen
+# calls — never shell=True, so nothing else the model might slip in (&&, ;,
+# backticks) gets shell interpretation either way.
+#
 # Read-only allowlist for now — real policy guards (write gating, arg
 # validation, confirm=true) aren't built yet, so keeping every allowed
 # executable read-only is the cheapest guard available before that exists.
@@ -25,7 +31,29 @@ from agent.runtime import Tool, ToolResult
 WORKSPACE = Path(__file__).resolve().parent.parent / "workspace" / "liberty-rider-myroadtrips"
 
 ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd"}
-SHELL_OPERATORS = ("&&", "||", "|", ";", "`", "$(", ">", "<", "\n")
+# "|" removed on purpose: it's handled structurally below, not as a reject.
+DISALLOWED_OPERATORS = ("&&", "||", ";", "`", "$(", ">", "<", "\n")
+MAX_PIPELINE_STAGES = 3
+
+
+def _split_pipeline(argv: list[str]) -> list[list[str]] | None:
+    """Split tokens on stand-alone "|" tokens into pipeline stages.
+
+    shlex already resolved quoting before this runs, so a `|` that was
+    inside quotes (e.g. grep -E "foo|bar") survived as part of one token,
+    not as its own list element — only a bare, unquoted `|` reaches here as
+    a stage boundary. Returns None on an empty stage (leading/trailing/
+    doubled pipe, e.g. "grep foo |").
+    """
+    stages: list[list[str]] = [[]]
+    for tok in argv:
+        if tok == "|":
+            stages.append([])
+        else:
+            stages[-1].append(tok)
+    if any(not stage for stage in stages):
+        return None
+    return stages
 
 
 def _handler(arguments: dict) -> ToolResult:
@@ -37,7 +65,7 @@ def _handler(arguments: dict) -> ToolResult:
     if not command.strip():
         return ToolResult(ok=False, error_code="empty_command")
 
-    if any(op in command for op in SHELL_OPERATORS):
+    if any(op in command for op in DISALLOWED_OPERATORS):
         return ToolResult(ok=False, error_code="shell_operator_rejected")
 
     try:
@@ -45,24 +73,45 @@ def _handler(arguments: dict) -> ToolResult:
     except ValueError as exc:  # unbalanced quotes, e.g.
         return ToolResult(ok=False, error_code=f"parse_error: {exc}")
 
-    if not argv or argv[0] not in ALLOWED_EXECUTABLES:
-        return ToolResult(ok=False, error_code=f"executable_not_allowed: {argv[0] if argv else ''}")
+    stages = _split_pipeline(argv)
+    if stages is None:
+        return ToolResult(ok=False, error_code="empty_pipeline_stage")
+    if len(stages) > MAX_PIPELINE_STAGES:
+        return ToolResult(ok=False, error_code="too_many_pipeline_stages")
+    for stage in stages:
+        if stage[0] not in ALLOWED_EXECUTABLES:
+            return ToolResult(ok=False, error_code=f"executable_not_allowed: {stage[0]}")
 
+    procs: list[subprocess.Popen] = []
     try:
-        proc = subprocess.run(
-            argv,
-            shell=False,  # argv form, not a shell string — no operator injection
-            cwd=WORKSPACE,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+        upstream_stdout = None
+        for stage in stages:
+            proc = subprocess.Popen(
+                stage,
+                shell=False,  # argv form, not a shell string — no operator injection
+                cwd=WORKSPACE,
+                stdin=upstream_stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if upstream_stdout is not None:
+                upstream_stdout.close()  # our end; the child now owns the read side
+            upstream_stdout = proc.stdout
+            procs.append(proc)
+
+        stdout, stderr = procs[-1].communicate(timeout=10)
+        for upstream in procs[:-1]:
+            upstream.wait(timeout=10)
     except subprocess.TimeoutExpired:
+        for proc in procs:
+            proc.kill()
         return ToolResult(ok=False, error_code="timeout")
 
-    output = proc.stdout + proc.stderr  # tool contract: return combined stdout+stderr
-    if proc.returncode != 0:
-        return ToolResult(ok=False, data=output, error_code=f"exit_{proc.returncode}")
+    returncode = procs[-1].returncode
+    output = (stdout or "") + (stderr or "")  # tool contract: combined stdout+stderr
+    if returncode != 0:
+        return ToolResult(ok=False, data=output, error_code=f"exit_{returncode}")
     return ToolResult(ok=True, data=output)
 
 
