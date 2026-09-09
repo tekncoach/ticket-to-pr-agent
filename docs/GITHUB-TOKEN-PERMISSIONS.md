@@ -1,9 +1,6 @@
 # GitHub Token
 
-`GITHUB_TOKEN` in `.env` (never committed) — a fine-grained personal
-access token, resource owner `tekncoach`, repository access limited to
-`liberty-rider-myroadtrips` only. Used by every tool that calls the
-GitHub REST API.
+`GITHUB_TOKEN` in `.env` (never committed) — a fine-grained personal access token, resource owner `tekncoach`, repository access limited to `liberty-rider-myroadtrips` only. Used by every tool that calls the GitHub REST API.
 
 ## Scopes set, and what actually uses them
 
@@ -18,12 +15,10 @@ GitHub REST API.
 
 ## Regenerating it
 
-GitHub → Settings → Developer settings → Personal access tokens →
-Fine-grained tokens → Generate new token.
+GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token.
 
 - Resource owner: `tekncoach`
 - Repository access: only `liberty-rider-myroadtrips`
 - Permissions: the scopes in the table above
 
-Paste the value straight into `.env` with a text editor — never through a
-shell command that would echo it into a terminal session or a chat log.
+Paste the value straight into `.env` with a text editor — never through a shell command that would echo it into a terminal session or a chat log.
