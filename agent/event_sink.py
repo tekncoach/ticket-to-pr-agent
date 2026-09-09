@@ -24,46 +24,68 @@ from agent.config import SESSIONS_DIR
 
 class EventSink:
     """Base class: does nothing. The default no-op, and the interface
-    every sink below implements."""
+    every sink below implements.
+
+    Two parallel streams per run, deliberately not merged into one file:
+    emit() carries structured metrics (latency, tokens, cost, stop_reason —
+    what runtime.py's trace already recorded), emit_message() carries the
+    actual conversation content (what was asked, what the model said or
+    thought, what a tool returned). Mixing large text content into the
+    lean metrics trace would make it harder to scan for exactly what it's
+    good at; a separate stream keeps both usable for what each is for."""
 
     def emit(self, run_id: str, event: dict) -> None:
         pass
 
+    def emit_message(self, run_id: str, message: dict) -> None:
+        pass
+
 
 class NullSink(EventSink):
-    """For tests: run() still calls emit() on every event, nothing is
-    ever written anywhere."""
+    """For tests: run() still calls emit()/emit_message() on everything,
+    nothing is ever written anywhere."""
 
 
 class JSONLFileSink(EventSink):
-    """Appends to <sessions_dir>/<run_id>.jsonl. flush + fsync per line,
-    not buffered — see runtime.py's emit() closure for why (a crash mid-run
-    must not lose events from turns that already succeeded)."""
+    """Appends to <sessions_dir>/<run_id>.jsonl (events) and
+    <sessions_dir>/<run_id>.messages.jsonl (conversation content). flush +
+    fsync per line, not buffered — see runtime.py's emit() closure for why
+    (a crash mid-run must not lose events from turns that already
+    succeeded)."""
 
     def __init__(self, sessions_dir: Path = SESSIONS_DIR):
         self.sessions_dir = sessions_dir
 
     def emit(self, run_id: str, event: dict) -> None:
+        self._append_line(f"{run_id}.jsonl", event)
+
+    def emit_message(self, run_id: str, message: dict) -> None:
+        self._append_line(f"{run_id}.messages.jsonl", message)
+
+    def _append_line(self, filename: str, obj: dict) -> None:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
-        path = self.sessions_dir / f"{run_id}.jsonl"
+        path = self.sessions_dir / filename
         with open(path, "a") as f:
-            f.write(json.dumps(event, default=str) + "\n")
+            f.write(json.dumps(obj, default=str) + "\n")
             f.flush()
             os.fsync(f.fileno())
 
 
 class StdoutSink(EventSink):
-    """One compact JSON line per event, printed live as the run happens —
-    hello_agent.py's own technique for watching a loop instead of waiting
-    for it to return."""
+    """One compact JSON line per event/message, printed live as the run
+    happens — hello_agent.py's own technique for watching a loop instead
+    of waiting for it to return."""
 
     def emit(self, run_id: str, event: dict) -> None:
         print(json.dumps(event, default=str))
 
+    def emit_message(self, run_id: str, message: dict) -> None:
+        print(json.dumps(message, default=str))
+
 
 class MultiSink(EventSink):
-    """Fans one event out to several sinks — e.g. persist to disk AND
-    print live."""
+    """Fans one event/message out to several sinks — e.g. persist to disk
+    AND print live."""
 
     def __init__(self, *sinks: EventSink):
         self.sinks = sinks
@@ -71,3 +93,7 @@ class MultiSink(EventSink):
     def emit(self, run_id: str, event: dict) -> None:
         for sink in self.sinks:
             sink.emit(run_id, event)
+
+    def emit_message(self, run_id: str, message: dict) -> None:
+        for sink in self.sinks:
+            sink.emit_message(run_id, message)

@@ -118,6 +118,19 @@ class AgentRuntime:
         trace = []
         run_id = uuid.uuid4().hex[:12]
 
+        # Separate stream from emit()/trace: the full conversation content
+        # (what was asked, what the model said or thought, what a tool
+        # returned) rather than the structured metrics above. See
+        # agent/event_sink.py's EventSink docstring for why these are two
+        # files, not one.
+        def emit_message(role: str, content: Any, turn: int) -> None:
+            self.logger.emit_message(run_id, {
+                "run_id": run_id, "ts": _now_iso(), "turn": turn,
+                "role": role, "content": content,
+            })
+
+        emit_message("user", user_msg, turn=0)
+
         def emit(event: dict) -> None:
             # Single point of truth: every event is recorded in-memory AND
             # sent to self.logger immediately, never buffered until run()
@@ -200,6 +213,12 @@ class AgentRuntime:
             # every turn. resp.content is already the right shape (a list of
             # block objects); the SDK accepts it straight back on the next call.
             messages.append({"role": "assistant", "content": resp.content})
+            # resp.content is a list of SDK pydantic block objects (TextBlock,
+            # ToolUseBlock, and — when thinking_enabled — ThinkingBlock,
+            # which is where the model's reasoning actually lives, not just
+            # its final text). model_dump() is what makes any of that
+            # JSON-serializable for the messages.jsonl file.
+            emit_message("assistant", [b.model_dump() for b in resp.content], turn=turn)
 
             if resp.stop_reason != "tool_use":
                 # No tool call this turn: whatever text came back is the answer.
@@ -284,6 +303,7 @@ class AgentRuntime:
                 })
 
             messages.append({"role": "user", "content": tool_results})
+            emit_message("user", tool_results, turn=turn)
 
         return {"run_id": run_id, "error": "max_turns", "trace": trace}
 
