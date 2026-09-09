@@ -1,9 +1,15 @@
-.PHONY: agent ingest eval docker-up
+.PHONY: agent run ingest eval docker-up
 
-# Run the agent (agent/cli.py) with one message. Needs .env — see README
-# Quickstart. Usage: make agent MSG="What does issue #1 ask for?"
+# Run the agent directly (agent/cli.py) with one message — the fast path,
+# no server. Needs .env — see README Quickstart.
+# Usage: make agent MSG="What does issue #1 ask for?"
 agent:
 	uv run --env-file .env python -m agent.cli "$(MSG)"
+
+# Start the HTTP service (agent/service.py): GET /health, POST /v1/chat.
+# Same AgentRuntime as `make agent` — agent/factory.py builds both.
+run:
+	uv run --env-file .env uvicorn agent.service:app --reload
 
 # Ingest the liberty-rider corpus into the vector store (real on Day 4).
 ingest:
@@ -13,11 +19,7 @@ ingest:
 eval:
 	uv run pytest evals -q
 
-# Day 6: build and run the agent as a service in Docker, with an HTTP
-# entrypoint (FastAPI wiring around agent/runtime.py — not built yet; the
-# Day 2 hello_agent.py service this used to point to was retired once the
-# Day 3 decomposition made it redundant, see git tag day2-hello-agent).
-# The compose file does not exist yet either — this target is a placeholder
-# until Day 6 owns deployment.
+# Day 6: build and run the service in Docker. The compose file does not
+# exist yet — this target is a placeholder until Day 6 owns deployment.
 docker-up:
 	docker compose -f deploy/docker-compose.yml up --build
