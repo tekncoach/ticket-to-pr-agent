@@ -17,6 +17,7 @@ import os
 import sys
 
 from agent.runtime import AgentRuntime, Tool
+from tools.bash import bash
 from tools.get_time import get_time
 
 # Same env-var names and defaults as hello_agent.py, so the two entrypoints
@@ -26,16 +27,17 @@ MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
 
 SYSTEM_PROMPT = (
-    "You are a coding agent that will grow into a ticket->PR agent. For now the "
-    "only thing you can do is tell the time: call the get_time tool when asked "
-    "about the current time. Be concise."
+    "You are a coding agent that will grow into a ticket->PR agent. You can "
+    "tell the time with get_time, and inspect the checked-out repo with bash "
+    "— only read-only commands (grep, cat, find, ls, head, tail, wc, pwd) are "
+    "allowed for now. Be concise."
 )
 
 # hello_agent.py keeps two parallel structures in sync by hand: a TOOLS list
 # of schemas and a separate TOOL_HANDLERS dict of callables. Our Tool
 # dataclass bundles both into one object, so there's only one place to
 # register a tool instead of two that can drift apart.
-TOOLS: dict[str, Tool] = {"get_time": get_time}
+TOOLS: dict[str, Tool] = {"get_time": get_time, "bash": bash}
 
 
 def main() -> None:

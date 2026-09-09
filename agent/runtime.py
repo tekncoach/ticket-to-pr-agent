@@ -15,10 +15,16 @@ class ToolResult:
 @dataclass
 class Tool:
     name: str
-    description: str
-    input_schema: dict  # JSON Schema — Anthropic's own field name, no translation needed
     handler: Callable[[dict], ToolResult]
+    description: str = ""
+    input_schema: dict | None = None  # None for Anthropic-defined tools — see anthropic_type
     side_effect: bool = False
+    # Set only for Anthropic-defined client-side tools (e.g. "bash_20250124",
+    # "text_editor_20250728"): those are schema-less on the wire — Claude
+    # already knows their input shape, we never send input_schema for them.
+    # We still write and run the handler ourselves; Anthropic never executes
+    # anything server-side for these two.
+    anthropic_type: str | None = None
 
 @dataclass
 class AgentRuntime:
@@ -120,10 +126,18 @@ class AgentRuntime:
         )
 
     def _anthropic_tools(self) -> list[dict]:
-        # Anthropic's Messages API takes tools flat: no "type": "function"
-        # wrapper around name/description/input_schema.
-        return [{
-            "name": t.name,
-            "description": t.description,
-            "input_schema": t.input_schema,
-        } for t in self.tools.values()]
+        # Anthropic-defined client-side tools (bash, text_editor, memory) are
+        # declared by type+name only — passing input_schema for one of these
+        # is rejected. Everything else is our own custom tool: flat
+        # name/description/input_schema, no "type": "function" wrapper.
+        schemas = []
+        for t in self.tools.values():
+            if t.anthropic_type:
+                schemas.append({"type": t.anthropic_type, "name": t.name})
+            else:
+                schemas.append({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.input_schema,
+                })
+        return schemas
