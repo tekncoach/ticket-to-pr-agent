@@ -12,14 +12,24 @@ from __future__ import annotations
 import os
 import sys
 
-from agent.runtime import AgentRuntime
+from agent.runtime import AgentRuntime, Tool
 from tools.get_time import get_time
+
+# Same env-var name and default as hello_agent.py's LLM_MODEL, so the two
+# entrypoints stay configured the same way.
+LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. For now the "
     "only thing you can do is tell the time: call the get_time tool when asked "
     "about the current time. Be concise."
 )
+
+# hello_agent.py keeps two parallel structures in sync by hand: a TOOLS list
+# of schemas and a separate TOOL_HANDLERS dict of callables. Our Tool
+# dataclass bundles both into one object, so there's only one place to
+# register a tool instead of two that can drift apart.
+TOOLS: dict[str, Tool] = {"get_time": get_time}
 
 
 def main() -> None:
@@ -28,11 +38,7 @@ def main() -> None:
         raise SystemExit(1)
 
     user_msg = sys.argv[1]
-    runtime = AgentRuntime(
-        model=os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
-        tools={"get_time": get_time},
-        system=SYSTEM_PROMPT,
-    )
+    runtime = AgentRuntime(model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT)
     result = runtime.run(user_msg)
     print(result)
 
