@@ -27,3 +27,4 @@ data/*
 
 # Playwright MCP scratch
 .playwright-mcp/
+workspace/
