@@ -18,6 +18,13 @@ MODEL_PRICES_PER_MTOK = {
     "claude-opus-5": (5.00, 25.00),
 }
 
+# The `thinking` param has two mutually exclusive shapes, and sending the
+# wrong one is a 400: models in this set take {"type": "adaptive"} and
+# reject budget_tokens outright; every other model (Haiku 4.5 included —
+# our default) needs {"type": "enabled", "budget_tokens": N} explicitly,
+# since thinking isn't on by default for it the way it is for these.
+ADAPTIVE_THINKING_MODELS = {"claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-fable-5-1"}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -64,6 +71,13 @@ class AgentRuntime:
     # own guidance warns that dropping a tool_result silently trains it to
     # stop using parallel calls at all.
     max_parallel_tool_calls: int = 3
+    # Prepared, off by default: flip thinking_enabled to turn it on. The
+    # param shape (adaptive vs. budget_tokens) is picked automatically from
+    # self.model at call time — see ADAPTIVE_THINKING_MODELS and
+    # _thinking_param(). thinking_budget_tokens only matters on the
+    # budget_tokens path (Haiku-style models); adaptive models ignore it.
+    thinking_enabled: bool = False
+    thinking_budget_tokens: int = 2048
 
     def __post_init__(self) -> None:
         # Built once per AgentRuntime instance, not once per call — the SDK
@@ -72,6 +86,20 @@ class AgentRuntime:
         if not api_key:
             raise RuntimeError("LLM_API_KEY (or ANTHROPIC_API_KEY) is not set.")
         self._client = anthropic.Anthropic(api_key=api_key)
+
+        if self.thinking_enabled and self.model not in ADAPTIVE_THINKING_MODELS:
+            # Anthropic's own constraints on this path: budget_tokens >= 1024
+            # and strictly less than max_tokens (room must remain for the
+            # actual answer after thinking). Fail here, at construction,
+            # with a message that says what to change — not as a 400 from
+            # the API three turns into a run.
+            if self.thinking_budget_tokens < 1024:
+                raise RuntimeError("thinking_budget_tokens must be >= 1024.")
+            if self.thinking_budget_tokens >= self.max_tokens:
+                raise RuntimeError(
+                    f"thinking_budget_tokens ({self.thinking_budget_tokens}) must be "
+                    f"less than max_tokens ({self.max_tokens}) — raise max_tokens."
+                )
 
     def run(self, user_msg: str) -> dict:
         # Anthropic takes the system prompt as its own messages.create(system=...)
@@ -227,14 +255,25 @@ class AgentRuntime:
             return exc.message
         return None
 
+    def _thinking_param(self) -> dict | None:
+        if not self.thinking_enabled:
+            return None
+        if self.model in ADAPTIVE_THINKING_MODELS:
+            return {"type": "adaptive"}
+        return {"type": "enabled", "budget_tokens": self.thinking_budget_tokens}
+
     def _llm(self, messages: list[dict], tools: list[dict]) -> anthropic.types.Message:
-        return self._client.messages.create(
+        kwargs: dict[str, Any] = dict(
             model=self.model,
             max_tokens=self.max_tokens,
             system=self.system,
             messages=messages,
             tools=tools,
         )
+        thinking = self._thinking_param()
+        if thinking is not None:
+            kwargs["thinking"] = thinking
+        return self._client.messages.create(**kwargs)
 
     def _anthropic_tools(self) -> list[dict]:
         # Anthropic-defined client-side tools (bash, text_editor, memory) are

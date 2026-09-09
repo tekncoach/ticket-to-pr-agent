@@ -31,6 +31,11 @@ MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
 # allow_side_effects is True. SHADOW_MODE=true (the safe default) means
 # writes stay off; set SHADOW_MODE=false to actually let the agent edit.
 SHADOW_MODE = os.environ.get("SHADOW_MODE", "true").lower() == "true"
+# Prepared, off by default. If flipped on, raise MAX_TOKENS accordingly —
+# the budget_tokens path (Haiku 4.5, our default) requires
+# max_tokens > THINKING_BUDGET_TOKENS, checked in AgentRuntime.__post_init__.
+THINKING_ENABLED = os.environ.get("THINKING_ENABLED", "false").lower() == "true"
+THINKING_BUDGET_TOKENS = int(os.environ.get("THINKING_BUDGET_TOKENS", "2048"))
 
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. You can "
@@ -62,6 +67,7 @@ def main() -> None:
         model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
         max_tokens=MAX_TOKENS, max_turns=MAX_TURNS,
         allow_side_effects=not SHADOW_MODE,
+        thinking_enabled=THINKING_ENABLED, thinking_budget_tokens=THINKING_BUDGET_TOKENS,
     )
     result = runtime.run(user_msg)
     print(result)
