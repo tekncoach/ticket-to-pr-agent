@@ -163,8 +163,11 @@ def search_kb(query: str, k: int = 6, filters: dict | None = None, expand: bool 
 
 # System prompt fragment
 GROUNDING = """
-You answer ONLY from tool results. For each factual claim, cite [source#chunk_id].
-If retrieval scores are low or sources conflict, respond with:
+You answer ONLY from tool results. For each factual claim from search_kb, copy
+its exact `citation` field into your answer verbatim - never write your own
+[source#chunk_id]-shaped text from memory or invent one that looks similar.
+If retrieval scores are low, sources conflict, or the retrieved text doesn't
+actually support what's being asked, respond with:
 INSUFFICIENT_CONTEXT: <what is missing>
 Never invent ticket IDs, policies, or URLs.
 """

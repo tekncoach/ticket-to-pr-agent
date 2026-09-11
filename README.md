@@ -102,6 +102,7 @@ What's built, today:
 - [`docs/MCP-SERVER.md`](docs/MCP-SERVER.md) — exposing `fetch_ticket` over MCP
 - [`docs/SECRETS-REDACTION.md`](docs/SECRETS-REDACTION.md) — why untrusted fetched content is scanned for secrets before it reaches the model or the logs
 - [`docs/RAG-CONTEXT-EXPANSION.md`](docs/RAG-CONTEXT-EXPANSION.md) — parent-document/section expansion
+- [`docs/RAG-SMOKE-SET.md`](docs/RAG-SMOKE-SET.md) — 10-query smoke set, hit@6 and citation accuracy measured by hand, two real bugs found and fixed live
 
 Named forks, not built — one file per topic in [`docs/research/`](docs/research/), each a companion to the built doc above it: [`spec.md`](docs/research/spec.md) (execution isolation, GitHub integration, auth enforcement), [`mcp-server.md`](docs/research/mcp-server.md) (per-user rights gating), [`secrets-redaction.md`](docs/research/secrets-redaction.md) (the betterleaks binary in CI/Docker), [`rag.md`](docs/research/rag.md) (vector-store scale, image/multimodal ingestion, other expansion patterns, other document formats).
 
