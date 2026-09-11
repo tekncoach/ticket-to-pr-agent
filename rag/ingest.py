@@ -118,6 +118,12 @@ def embed_and_upsert(chunks: list[Chunk], collection: str) -> int:
             "INSERT OR REPLACE INTO vec_chunks (rowid, embedding) VALUES (?, ?)",
             (cur.lastrowid, serialize(vector.tolist())),
         )
+        # The BM25 leg: same rowid, kept in sync manually alongside the
+        # other two inserts above — see rag/store.py's fts_chunks comment.
+        db.execute(
+            "INSERT OR REPLACE INTO fts_chunks (rowid, text) VALUES (?, ?)",
+            (cur.lastrowid, chunk.text),
+        )
         count += 1
     db.commit()
     db.close()

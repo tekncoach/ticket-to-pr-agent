@@ -56,5 +56,17 @@ def get_db(path: str | None = None) -> sqlite3.Connection:
             collection TEXT NOT NULL
         )
     """)
+    # The BM25 leg of hybrid search — same rowid as chunk_meta/vec_chunks
+    # again, kept in sync manually (not an external-content FTS5 table)
+    # because embed_and_upsert already does explicit INSERT OR REPLACE
+    # everywhere else; one more mirrored insert is simpler than wiring
+    # sync triggers for a table this small. Verified live: FTS5 accepts
+    # INSERT OR REPLACE on an explicit rowid, and bm25() ranks ascending
+    # (more negative = better match) — not assumed from the docs.
+    db.execute("""
+        CREATE VIRTUAL TABLE IF NOT EXISTS fts_chunks USING fts5(
+            text, tokenize='porter'
+        )
+    """)
     db.commit()
     return db
