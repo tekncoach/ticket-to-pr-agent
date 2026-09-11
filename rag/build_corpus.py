@@ -21,7 +21,7 @@ def main() -> None:
     total = 0
     for entry in manifest:
         path = Path(entry["path"])
-        title = entry.get("title", path.name)
+        title = entry.get("title", path.stem)
         if not path.exists():
             print(f"SKIP (missing file): {title}")
             continue
@@ -31,7 +31,7 @@ def main() -> None:
         if not entry.get("pii_reviewed"):
             print(f"SKIP (not PII-reviewed): {title}")
             continue
-        chunks = chunk_file(path)
+        chunks = chunk_file(path, title=title)
         n = embed_and_upsert(chunks, collection=entry.get("layer", "default"))
         total += n
         print(f"{n:>3} chunks  {title}")

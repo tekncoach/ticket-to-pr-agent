@@ -74,7 +74,7 @@ def main() -> None:
               "or `make ingest` to pick up everything reviewed so far.")
         return
 
-    chunks = chunk_file(path)
+    chunks = chunk_file(path, title=title)
     n = embed_and_upsert(chunks, collection=args.layer)
     print(f"ingested {n} chunks")
 

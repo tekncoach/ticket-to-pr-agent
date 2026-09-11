@@ -58,9 +58,9 @@ class Chunk(BaseModel):
     acl: str = "public"
 
 
-def chunk_markdown(path: Path, max_chars: int = 2200, overlap: int = 300) -> list[Chunk]:
+def chunk_markdown(path: Path, max_chars: int = 2200, overlap: int = 300, title: str | None = None) -> list[Chunk]:
     text = path.read_text()
-    title = path.stem
+    title = title or path.stem
     updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
 
     headings = list(_HEADING_RE.finditer(text))
@@ -97,7 +97,7 @@ def chunk_markdown(path: Path, max_chars: int = 2200, overlap: int = 300) -> lis
     return chunks
 
 
-def chunk_pdf(path: Path, max_chars: int = 2200, overlap: int = 300) -> list[Chunk]:
+def chunk_pdf(path: Path, max_chars: int = 2200, overlap: int = 300, title: str | None = None) -> list[Chunk]:
     """PDF's structural unit is the page, not a markdown heading — pypdf
     gives no font-size/heading detection, so unlike chunk_markdown this
     doesn't try to find finer structure than that. Each page's extracted
@@ -111,7 +111,7 @@ def chunk_pdf(path: Path, max_chars: int = 2200, overlap: int = 300) -> list[Chu
     from pypdf import PdfReader
 
     reader = PdfReader(path)
-    title = path.stem
+    title = title or path.stem
     updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
 
     chunks: list[Chunk] = []
@@ -131,13 +131,13 @@ def chunk_pdf(path: Path, max_chars: int = 2200, overlap: int = 300) -> list[Chu
     return chunks
 
 
-def chunk_file(path: Path, max_chars: int = 2200, overlap: int = 300) -> list[Chunk]:
+def chunk_file(path: Path, max_chars: int = 2200, overlap: int = 300, title: str | None = None) -> list[Chunk]:
     """Dispatch on extension — the one thing rag/build_corpus.py and
     rag/add_source.py should call, so adding a third format later is one
     branch here, not a change at every call site."""
     if path.suffix.lower() == ".pdf":
-        return chunk_pdf(path, max_chars, overlap)
-    return chunk_markdown(path, max_chars, overlap)
+        return chunk_pdf(path, max_chars, overlap, title=title)
+    return chunk_markdown(path, max_chars, overlap, title=title)
 
 
 def embed_and_upsert(chunks: list[Chunk], collection: str) -> int:
