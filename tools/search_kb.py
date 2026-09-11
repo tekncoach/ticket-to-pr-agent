@@ -25,6 +25,14 @@ from rag.retrieve import search_kb as _search_kb
 # edit_file's denylist, enforced in code, not left as a schema convention
 # a model could ignore or a hostile prompt could exploit.
 _ALLOWED_FILTER_KEYS = ("source", "title", "section", "collection")
+# "collection" staying caller-settable IS intentional, confirmed on review
+# rather than left ambiguous: it's a corpus-organization label (which
+# manifest layer a chunk came from — "project", "software-factory-research",
+# ...), the same for every chunk regardless of who's asking, and every
+# collection today carries the same acl="public". Letting the model narrow
+# a search to one collection grants no access it didn't already have —
+# unlike "acl", which is the actual access-control boundary and is never
+# caller-settable (see above).
 
 # This project's auth model today is a single service account — no
 # per-user identity to vary this by (see docs/research/mcp-server.md for

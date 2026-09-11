@@ -12,6 +12,8 @@ Point the agent at a repo and a labeled issue. It reads the ticket, explores the
 
 The target repo is a config value, not a hardcoded assumption — point `TARGET_REPO` at any repo you have a token for. Development and every recorded scenario in this repo used [`liberty-rider-myroadtrips`](https://github.com/tekncoach/liberty-rider-myroadtrips) as the reference target.
 
+**Tenancy model, stated plainly:** this is single-tenant automation — one running instance, one `TARGET_REPO`, one service-account `GITHUB_TOKEN`. There is no per-user identity, no multi-target sandboxing, and no isolation between "tenants" beyond running separate instances with separate config, because there is nothing to isolate yet — the same reasoning [`docs/SPEC.md`](docs/SPEC.md#users--surfaces) states for its auth model. `search_kb`'s `acl` field (see [`tools/search_kb.py`](tools/search_kb.py)) is the one access-control mechanism that exists today, server-enforced regardless of what a caller requests; real per-user rights gating is a named, not-yet-built fork — [`docs/research/mcp-server.md`](docs/research/mcp-server.md).
+
 ## Why this exists
 
 Most "agent" demos wrap an LLM call in a chat loop and call it done. This one is built the other way: every mechanism an FDE-style deployment actually needs — structured tool calls, write gating, argument validation, cost and token accounting, crash-safe logging — is hand-rolled and verified against the live API, not assumed to come free from a framework. That verification isn't just asserted here — [`docs/manual_scenarios.md`](docs/manual_scenarios.md) has the actual traces, prompts, and independently-checked results for seven live runs.
