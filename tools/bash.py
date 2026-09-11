@@ -8,8 +8,17 @@
 # permitted executables and reject shell operators (&&, |, ;, `, $()) — a
 # blocklist is not sufficient." We also never use shell=True: argv form
 # means shell metacharacters have no special meaning even if one slips
-# through, and cwd is pinned to workspace/ so a command can't reach the
-# rest of the machine.
+# through.
+#
+# cwd alone does NOT confine a command to the workspace — an argument can
+# still be an absolute path or a `../` escape regardless of cwd, and this
+# was live-verified to actually happen: given a path from outside the
+# workspace (surfaced via search_kb's results, before that tool stopped
+# exposing it), the agent ran `find /some/path/outside -name ...` and it
+# succeeded. Every argument is now checked with the same
+# agent.workspace_guard.resolve_within_workspace() tools/edit_file.py
+# already used for its own path — one shared implementation, not two that
+# could drift out of sync.
 #
 # One exception to "reject every operator": a plain pipe (`|`) between
 # allowed, read-only executables (e.g. `find ... | wc -l`) isn't actually
@@ -27,6 +36,7 @@ import subprocess
 
 from agent.config import WORKSPACE
 from agent.runtime import Tool, ToolResult
+from agent.workspace_guard import resolve_within_workspace
 
 ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd"}
 # "|" removed on purpose: it's handled structurally below, not as a reject.
@@ -79,6 +89,15 @@ def _handler(arguments: dict) -> ToolResult:
     for stage in stages:
         if stage[0] not in ALLOWED_EXECUTABLES:
             return ToolResult(ok=False, error_code=f"executable_not_allowed: {stage[0]}")
+        for arg in stage[1:]:
+            # Every argument, not just ones that "look like" a path — a
+            # flag or a grep pattern resolves harmlessly inside the
+            # workspace (e.g. "-la", "apple|banana"); only a genuine
+            # escape (an absolute path, ".." past the root) ever fails
+            # this check, so there is no need to first guess which
+            # arguments are paths.
+            if resolve_within_workspace(WORKSPACE, arg) is None:
+                return ToolResult(ok=False, error_code=f"argument_escapes_workspace: {arg}")
 
     procs: list[subprocess.Popen] = []
     try:

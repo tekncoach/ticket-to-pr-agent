@@ -78,3 +78,34 @@ def test_too_many_pipeline_stages_rejected(tmp_path):
     result = _run(tmp_path, "cat a.txt | cat a.txt | cat a.txt | cat a.txt")
     assert not result.ok
     assert result.error_code == "too_many_pipeline_stages"
+
+
+def test_absolute_path_argument_rejected(tmp_path):
+    # Regression test: live-observed the agent using an absolute path
+    # surfaced in a tool result to `find` a file entirely outside the
+    # workspace — cwd alone never stopped this, only an argument-level
+    # check does.
+    result = _run(tmp_path, "find /etc -name passwd")
+    assert not result.ok
+    assert result.error_code == "argument_escapes_workspace: /etc"
+
+
+def test_path_traversal_argument_rejected(tmp_path):
+    result = _run(tmp_path, "cat ../../../etc/passwd")
+    assert not result.ok
+    assert result.error_code.startswith("argument_escapes_workspace:")
+
+
+def test_relative_dot_argument_still_allowed(tmp_path):
+    (tmp_path / "x.txt").write_text("x\n")
+    result = _run(tmp_path, "find . -name x.txt")
+    assert result.ok
+
+
+def test_flag_and_pattern_arguments_not_mistaken_for_paths(tmp_path):
+    # "-la" and "apple|banana" both resolve harmlessly inside the
+    # workspace — the guard must not reject arguments just because they
+    # aren't obviously filenames.
+    (tmp_path / "a.txt").write_text("apple\nbanana\n")
+    result = _run(tmp_path, 'grep -E "apple|banana" a.txt')
+    assert result.ok

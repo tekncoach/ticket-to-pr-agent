@@ -25,18 +25,13 @@ from pathlib import Path
 
 from agent.config import WORKSPACE
 from agent.runtime import Tool, ToolResult
+from agent.workspace_guard import resolve_within_workspace
 
 DENYLIST = ("crypto.py", "migrations")
 
 
 def _resolve_safe_path(raw_path: str) -> Path | None:
-    root = WORKSPACE.resolve()
-    candidate = (root / raw_path).resolve()
-    try:
-        candidate.relative_to(root)
-    except ValueError:
-        return None  # escapes the workspace: .., a symlink, an absolute path elsewhere
-    return candidate
+    return resolve_within_workspace(WORKSPACE, raw_path)
 
 
 def _is_denied(path: Path) -> bool:

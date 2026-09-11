@@ -37,7 +37,7 @@ An agent fits here — and a form or a search box would not — because the task
 | Tool | Input | Side effects | Failure modes |
 |------|-------|--------------|---------------|
 | fetch_ticket | issue_id | none | issue missing, empty body |
-| bash *(Anthropic-defined `bash_20250124`)* | command (read-only allowlist) | none | shell operator rejected, executable not allowed, timeout, non-zero exit |
+| bash *(Anthropic-defined `bash_20250124`)* | command (read-only allowlist) | none | shell operator rejected, executable not allowed, argument escapes workspace, timeout, non-zero exit |
 | edit_file *(Anthropic-defined `text_editor_20250728`)* | command (view/create/str_replace/insert) + path | **writes working tree** | path escapes workspace, path denied, string not found, ambiguous match |
 | run_tests | selector? | none (in the run's container) | failing tests, missing deps, timeout |
 | open_pr | branch, description | **writes** (draft PR) | 409 branch exists, 422 validation |
