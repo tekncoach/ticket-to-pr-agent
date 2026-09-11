@@ -26,7 +26,7 @@ betterleaks is a compiled Go binary — `uv add` cannot install it. `redact_secr
 |---|---|
 | Local dev | Requires `brew install betterleaks` (or the Linux equivalent) — a prerequisite now documented in the README's Quickstart, not assumed. |
 | CI (`.github/workflows/ci.yml`) | betterleaks is **not installed**. `evals/test_secrets_redaction.py` mocks `subprocess.run`, so CI stays hermetic and green — but it only exercises the graceful-degradation path (the supplementary `sk-ant-` pattern), never the real binary. Named gap, not hidden. |
-| Docker (Day 6, not built yet) | Named in `docs/SPEC.md`'s Deferred architecture decisions: the image will need betterleaks copied in (multi-stage build from `ghcr.io/betterleaks/betterleaks`, or a pinned binary download) — not designed in detail until Day 6 actually owns deployment. |
+| Docker (Day 6, not built yet) | See [`docs/research/secrets-redaction.md`](research/secrets-redaction.md): the image will need betterleaks copied in (multi-stage build from `ghcr.io/betterleaks/betterleaks`, or a pinned binary download) — not designed in detail until Day 6 actually owns deployment. |
 
 **Graceful degradation, on purpose:** if the binary is missing or hangs, `redact_secrets()` falls back to the supplementary regex pattern only, rather than crashing `fetch_ticket`. This means a misconfigured environment silently gets narrower protection instead of failing loudly — a real, named tradeoff, not an oversight. Revisit (e.g. log a warning) if that's ever actually hit in practice.
 

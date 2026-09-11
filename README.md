@@ -92,14 +92,18 @@ uv run pytest evals -q
 
 ## Documentation
 
-- [`docs/SPEC.md`](docs/SPEC.md) — problem, users, tools, SLOs, rollout plan, and every deferred architecture decision
-- [`docs/SDLC-schema.md`](docs/SDLC-schema.md) — the full build-to-ship pipeline, what's built vs. planned
+What's built, today:
+
+- [`docs/SPEC.md`](docs/SPEC.md) — problem, users, tools, SLOs, rollout plan
+- [`docs/SDLC-schema.md`](docs/SDLC-schema.md) — the full build-to-ship pipeline, ✅/❌/🔮-tagged by what's actually built
 - [`docs/manual_scenarios.md`](docs/manual_scenarios.md) — five live-run scenarios, including a forced refusal and a forced failure
 - [`docs/CLAUDE-CLIENT-SIDE-TOOLS.md`](docs/CLAUDE-CLIENT-SIDE-TOOLS.md) — reference for Anthropic's native tool types
 - [`docs/CLAUDE-USAGE-AND-THINKING.md`](docs/CLAUDE-USAGE-AND-THINKING.md) — the full API usage object, verified by inspection, and how extended thinking is wired in
-- [`docs/MCP-SERVER.md`](docs/MCP-SERVER.md) — exposing `fetch_ticket` over MCP, and the per-user rights design for when that's actually needed
+- [`docs/MCP-SERVER.md`](docs/MCP-SERVER.md) — exposing `fetch_ticket` over MCP
 - [`docs/SECRETS-REDACTION.md`](docs/SECRETS-REDACTION.md) — why untrusted fetched content is scanned for secrets before it reaches the model or the logs
-- [`docs/RAG-CONTEXT-EXPANSION.md`](docs/RAG-CONTEXT-EXPANSION.md) — parent-document expansion (built), and two more patterns named but not built yet
+- [`docs/RAG-CONTEXT-EXPANSION.md`](docs/RAG-CONTEXT-EXPANSION.md) — parent-document/section expansion
+
+Named forks, not built — one file per topic in [`docs/research/`](docs/research/), each a companion to the built doc above it: [`spec.md`](docs/research/spec.md) (execution isolation, GitHub integration, auth enforcement), [`mcp-server.md`](docs/research/mcp-server.md) (per-user rights gating), [`secrets-redaction.md`](docs/research/secrets-redaction.md) (the betterleaks binary in CI/Docker), [`rag.md`](docs/research/rag.md) (vector-store scale, image/multimodal ingestion, other expansion patterns, other document formats).
 
 ## Status
 
