@@ -16,6 +16,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+import httpx
 from huggingface_hub import InferenceClient
 from pydantic import BaseModel
 
@@ -145,9 +146,22 @@ def embed_and_upsert(chunks: list[Chunk], collection: str) -> int:
         return 0
 
     client = InferenceClient(token=os.environ.get("HF_TOKEN"))
-    vectors = client.feature_extraction(
-        [c.text for c in chunks], model=EMBEDDING_MODEL, normalize=True,
-    )
+    try:
+        vectors = client.feature_extraction(
+            [c.text for c in chunks], model=EMBEDDING_MODEL, normalize=True,
+        )
+    except httpx.HTTPError as exc:
+        # Coach review: this call had no error handling at all — a
+        # network blip or HF rate limit mid-ingestion threw a raw
+        # exception with no context. This is a build script, not an
+        # agent tool (no ToolResult contract to return), so the fix is
+        # failing loudly with what was being ingested, not swallowing
+        # it — matching agent/runtime.py's own "no retry here, that's a
+        # separate concern" scoping rather than half-building retry logic.
+        raise RuntimeError(
+            f"embedding {len(chunks)} chunks via {EMBEDDING_MODEL} failed "
+            f"({type(exc).__name__}): {exc}"
+        ) from exc
     if vectors.shape[-1] != EMBEDDING_DIM:
         raise RuntimeError(
             f"{EMBEDDING_MODEL} returned {vectors.shape[-1]}-dim vectors, "
