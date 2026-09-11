@@ -15,10 +15,15 @@ import struct
 
 import sqlite_vec
 
-# BAAI/bge-small-en-v1.5's output dimension (HF's own recommended default
-# for the feature-extraction task) — sqlite-vec's vec0 table needs a fixed
-# dimension declared up front, so this is tied to EMBEDDING_MODEL below.
-EMBEDDING_DIM = 384
+# BAAI/bge-m3's output dimension — sqlite-vec's vec0 table needs a fixed
+# dimension declared up front, so this is tied to EMBEDDING_MODEL in
+# rag/ingest.py. Not HF's single-language default (bge-small-en-v1.5,
+# 384-dim): switched after a live query in English failed to retrieve a
+# French-language document in the corpus (a real cross-lingual miss, not a
+# hypothetical one — see the corpus build notes). bge-m3 is multilingual;
+# verified live that HF's Inference Providers actually serve it before
+# committing to it, same discipline as every other choice in this file.
+EMBEDDING_DIM = 1024
 
 
 def serialize(vector: list[float]) -> bytes:
