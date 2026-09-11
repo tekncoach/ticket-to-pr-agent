@@ -11,9 +11,11 @@ import os
 
 from agent.event_sink import EventSink, JSONLFileSink, MultiSink, StdoutSink
 from agent.runtime import AgentRuntime, Tool
+from rag.retrieve import GROUNDING
 from tools.bash import bash
 from tools.edit_file import edit_file
 from tools.fetch_ticket import fetch_ticket
+from tools.search_kb import search_kb
 
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
@@ -36,8 +38,10 @@ SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. You can "
     "inspect the checked-out repo with bash (read-only commands only: grep, "
     "cat, find, ls, head, tail, wc, pwd), read a GitHub Issue with "
-    "fetch_ticket, and edit files with str_replace_based_edit_tool "
-    "(view/create/str_replace/insert). Be concise."
+    "fetch_ticket, consult engineering good practices with search_kb, and "
+    "edit files with str_replace_based_edit_tool "
+    "(view/create/str_replace/insert). Be concise.\n"
+    + GROUNDING
 )
 
 # hello_agent.py kept two parallel structures in sync by hand: a TOOLS list
@@ -47,6 +51,7 @@ SYSTEM_PROMPT = (
 TOOLS: dict[str, Tool] = {
     "bash": bash,
     "fetch_ticket": fetch_ticket,
+    "search_kb": search_kb,
     "str_replace_based_edit_tool": edit_file,
 }
 
