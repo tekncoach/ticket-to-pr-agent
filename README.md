@@ -53,6 +53,13 @@ uv run --env-file .env python -m agent.cli "What does GitHub issue #1 ask for?"
 
 # Watch it live instead of waiting for the final answer
 LIVE_TRACE=true uv run --env-file .env python -m agent.cli "..."
+
+# RAG: same template pattern as .env — the real manifest names local
+# machine paths (some outside this repo entirely) and is gitignored.
+cp data/kb/manifest.example.json data/kb/manifest.json
+# edit it to point at your own corpus, then:
+make ingest
+make rag-query Q="a question about what you just ingested"
 ```
 
 Nothing writes to the target repo until `SHADOW_MODE=false` is set explicitly — the default is read-only by design.
@@ -86,6 +93,9 @@ uv run pytest evals -q
 - [`docs/manual_scenarios.md`](docs/manual_scenarios.md) — five live-run scenarios, including a forced refusal and a forced failure
 - [`docs/CLAUDE-CLIENT-SIDE-TOOLS.md`](docs/CLAUDE-CLIENT-SIDE-TOOLS.md) — reference for Anthropic's native tool types
 - [`docs/CLAUDE-USAGE-AND-THINKING.md`](docs/CLAUDE-USAGE-AND-THINKING.md) — the full API usage object, verified by inspection, and how extended thinking is wired in
+- [`docs/MCP-SERVER.md`](docs/MCP-SERVER.md) — exposing `fetch_ticket` over MCP, and the per-user rights design for when that's actually needed
+- [`docs/SECRETS-REDACTION.md`](docs/SECRETS-REDACTION.md) — why untrusted fetched content is scanned for secrets before it reaches the model or the logs
+- [`docs/RAG-CONTEXT-EXPANSION.md`](docs/RAG-CONTEXT-EXPANSION.md) — parent-document expansion (built), and two more patterns named but not built yet
 
 ## Status
 

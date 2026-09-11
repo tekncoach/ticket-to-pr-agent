@@ -1,0 +1,25 @@
+[
+  {
+    "_note": "Real, working entries — these two ship with the repo, so `cp` this file to manifest.json and `make ingest` runs immediately with no edits.",
+    "path": "docs/SPEC.md",
+    "title": "SPEC",
+    "layer": "project",
+    "license": "MIT (this repo)",
+    "pii_reviewed": true
+  },
+  {
+    "path": "docs/SECRETS-REDACTION.md",
+    "title": "SECRETS-REDACTION",
+    "layer": "project",
+    "license": "MIT (this repo)",
+    "pii_reviewed": true
+  },
+  {
+    "_note": "Placeholder shape for your own external sources — this path does not exist and pii_reviewed is false on purpose, so rag/build_corpus.py skips it (twice over: missing file, and not reviewed) rather than silently failing on a fake path. Point it at your own corpus, review it for license/PII, then flip pii_reviewed to true.",
+    "path": "/absolute/path/to/your/own/corpus/some-document.md",
+    "title": "some-document",
+    "layer": "your-layer-name",
+    "license": "describe the source's license or redistribution terms here",
+    "pii_reviewed": false
+  }
+]

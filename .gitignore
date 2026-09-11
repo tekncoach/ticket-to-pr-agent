@@ -19,6 +19,12 @@ venv/
 # Data: fixtures are committed deliberately; everything else stays local
 data/*
 !data/.gitkeep
+# rag/build_corpus.py's real manifest names local machine paths, some
+# outside this repo entirely (private research notes) — never committed.
+# The example/template below is, same pattern as .env vs .env.example.
+!data/kb/
+data/kb/*
+!data/kb/manifest.example.json
 
 # Editors / OS
 .DS_Store
