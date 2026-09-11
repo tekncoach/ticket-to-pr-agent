@@ -90,8 +90,31 @@ def _reciprocal_rank_fusion(*ranked_lists: list[str]) -> dict[str, float]:
     return scores
 
 
-def search_kb(query: str, k: int = 6, filters: dict | None = None) -> list[dict]:
-    """Return [{id, text, score, source, title, citation}]"""
+def _window_idx(chunk_id: str) -> int:
+    # "<title>#<section_idx>.<window_idx>" — the sort key that puts a
+    # section's windows back in their original document order, robust to
+    # digit count (unlike sorting chunk_id as plain text).
+    return int(chunk_id.rsplit("#", 1)[-1].split(".", 1)[1])
+
+
+def expand_to_section(db, title: str, section: str | None) -> str:
+    """Reassemble every chunk that came from the same document section,
+    in original order — the parent-document/auto-merging pattern: retrieve
+    on a small precise chunk, but hand back the whole section so a table
+    or list split across chunk boundaries isn't half-missing."""
+    rows = db.execute(
+        "SELECT chunk_id, text FROM chunk_meta WHERE title = ? AND section IS ?",
+        (title, section),
+    ).fetchall()
+    rows.sort(key=lambda r: _window_idx(r[0]))
+    return "\n\n".join(text for _, text in rows)
+
+
+def search_kb(query: str, k: int = 6, filters: dict | None = None, expand: bool = False) -> list[dict]:
+    """Return [{id, text, score, source, title, citation}] — text is the
+    exact matched chunk. With expand=True, also add "section_text": the
+    full section it came from (see expand_to_section), for when a single
+    chunk cuts off mid-table or mid-list."""
     client = InferenceClient(token=os.environ.get("HF_TOKEN"))
     query_vector = client.feature_extraction(query, model=EMBEDDING_MODEL, normalize=True)
 
@@ -108,17 +131,16 @@ def search_kb(query: str, k: int = 6, filters: dict | None = None) -> list[dict]
 
     placeholders = ",".join("?" * len(top_ids))
     rows = db.execute(
-        f"SELECT chunk_id, text, source, title FROM chunk_meta "
+        f"SELECT chunk_id, text, source, title, section FROM chunk_meta "
         f"WHERE chunk_id IN ({placeholders})",
         top_ids,
     ).fetchall()
-    db.close()
-    by_id = {chunk_id: (text, source, title) for chunk_id, text, source, title in rows}
+    by_id = {chunk_id: (text, source, title, section) for chunk_id, text, source, title, section in rows}
 
     results = []
     for chunk_id in top_ids:
-        text, source, title = by_id[chunk_id]
-        results.append({
+        text, source, title, section = by_id[chunk_id]
+        result = {
             "id": chunk_id,
             "text": text,
             # A fused RRF score, not a raw similarity — the two legs live on
@@ -131,7 +153,11 @@ def search_kb(query: str, k: int = 6, filters: dict | None = None) -> list[dict]
             "source": source,
             "title": title,
             "citation": f"[{title}#{chunk_id.split('#', 1)[-1]}]",
-        })
+        }
+        if expand:
+            result["section_text"] = expand_to_section(db, title, section)
+        results.append(result)
+    db.close()
     return results
 
 
