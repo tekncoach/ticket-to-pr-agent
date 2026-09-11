@@ -10,9 +10,8 @@
 # only returns them; it does not enforce citation or refusal itself.
 from __future__ import annotations
 
-import httpx
-
 from agent.runtime import Tool, ToolResult
+from rag.embeddings import EmbeddingServiceError
 from rag.retrieve import search_kb as _search_kb
 
 # "acl" is deliberately NOT in this list. It used to be, alongside source/
@@ -55,12 +54,12 @@ def _handler(arguments: dict) -> ToolResult:
         # generic handler_error runtime.py's tool-dispatch loop would
         # otherwise produce for any other exception.
         return ToolResult(ok=False, error_code=f"invalid_filters: {exc}")
-    except httpx.HTTPError as exc:
-        # The embedding call (Hugging Face Inference Providers) is a
-        # network call like any other tool's — a timeout or 5xx here
-        # shouldn't surface as an opaque handler_error, same reasoning
-        # as fetch_ticket's own httpx.RequestError handling.
-        return ToolResult(ok=False, error_code=f"embedding_service_error: {exc}")
+    except EmbeddingServiceError as exc:
+        # rag.embeddings.embed() already retried with backoff before
+        # raising this — a timeout or 5xx here shouldn't surface as an
+        # opaque handler_error, same reasoning as fetch_ticket's own
+        # httpx.RequestError handling.
+        return ToolResult(ok=False, error_code=f"embedding_service_unavailable: {exc}")
 
     # rag.retrieve.search_kb's "source" is the corpus's real, absolute
     # local filesystem path — fine for rag/query.py's human-facing CLI,

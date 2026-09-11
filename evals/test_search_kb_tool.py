@@ -69,10 +69,13 @@ def test_acl_not_exposed_in_the_tool_schema():
 
 
 def test_embedding_service_error_reported_specifically():
-    import httpx
-    request = httpx.Request("POST", "https://router.huggingface.co/hf-inference")
-    with patch("tools.search_kb._search_kb", side_effect=httpx.ConnectError("boom", request=request)):
+    # rag.embeddings.embed() retries transient HTTP failures itself before
+    # ever raising — by the time this reaches the tool handler, it's
+    # already an EmbeddingServiceError, not a raw httpx exception.
+    from rag.embeddings import EmbeddingServiceError
+
+    with patch("tools.search_kb._search_kb", side_effect=EmbeddingServiceError("boom")):
         result = search_kb.handler({"query": "x"})
 
     assert not result.ok
-    assert result.error_code.startswith("embedding_service_error:")
+    assert result.error_code == "embedding_service_unavailable: boom"

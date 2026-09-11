@@ -16,10 +16,9 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-import httpx
-from huggingface_hub import InferenceClient
 from pydantic import BaseModel
 
+from rag.embeddings import embed
 from rag.store import EMBEDDING_DIM, get_db, serialize
 
 EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "BAAI/bge-m3")
@@ -145,23 +144,11 @@ def embed_and_upsert(chunks: list[Chunk], collection: str) -> int:
     if not chunks:
         return 0
 
-    client = InferenceClient(token=os.environ.get("HF_TOKEN"))
-    try:
-        vectors = client.feature_extraction(
-            [c.text for c in chunks], model=EMBEDDING_MODEL, normalize=True,
-        )
-    except httpx.HTTPError as exc:
-        # Coach review: this call had no error handling at all — a
-        # network blip or HF rate limit mid-ingestion threw a raw
-        # exception with no context. This is a build script, not an
-        # agent tool (no ToolResult contract to return), so the fix is
-        # failing loudly with what was being ingested, not swallowing
-        # it — matching agent/runtime.py's own "no retry here, that's a
-        # separate concern" scoping rather than half-building retry logic.
-        raise RuntimeError(
-            f"embedding {len(chunks)} chunks via {EMBEDDING_MODEL} failed "
-            f"({type(exc).__name__}): {exc}"
-        ) from exc
+    # rag.embeddings.embed() already retries transient HTTP failures with
+    # backoff; EmbeddingServiceError only reaches here once that's
+    # exhausted, so this is a build script failing loudly with what was
+    # being ingested, not swallowing a retry-worthy blip.
+    vectors = embed([c.text for c in chunks], model=EMBEDDING_MODEL)
     if vectors.shape[-1] != EMBEDDING_DIM:
         raise RuntimeError(
             f"{EMBEDDING_MODEL} returned {vectors.shape[-1]}-dim vectors, "

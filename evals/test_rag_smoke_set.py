@@ -114,8 +114,7 @@ def test_held_out_in_domain_sounding_query_calls_search_kb_before_refusing():
 def test_empty_retrieval_returns_empty_list_not_an_error():
     with patch("rag.retrieve._dense_search", return_value=[]), \
          patch("rag.retrieve._bm25_search", return_value=[]), \
-         patch("rag.retrieve.InferenceClient") as mock_client:
-        mock_client.return_value.feature_extraction.return_value.tolist.return_value = [0.0]
+         patch("rag.retrieve.embed", return_value="fake-vector"):
         assert search_kb("anything", k=6) == []
 
 

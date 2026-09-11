@@ -9,11 +9,10 @@
 # a lexical and a semantic leg without inventing a weighting scheme.
 from __future__ import annotations
 
-import os
+import logging
 import re
 
-from huggingface_hub import InferenceClient
-
+from rag.embeddings import embed
 from rag.ingest import EMBEDDING_MODEL
 from rag.store import get_db, serialize
 
@@ -24,6 +23,29 @@ _CANDIDATE_POOL = 30
 _RRF_K = 60  # standard RRF constant; not tuned against a real smoke set yet
 
 _FTS5_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
+
+# Coach review, Day 4: "no dedicated retrieval-quality logging (which leg
+# contributed which candidates, whether BM25 or dense found the eventual
+# top hit) that would let you debug 'why did retrieval miss this doc'
+# without re-running the query by hand." Standard library logging, not a
+# new file format or a coupling to agent/event_sink.py's run-scoped
+# trace — search_kb() is called from the CLI and tests too, not just a
+# tool call inside a run. Enable with logging.getLogger("rag.retrieve")
+# at DEBUG to see the per-result leg breakdown for every query.
+_logger = logging.getLogger(__name__)
+
+
+def _log_retrieval_debug(query: str, dense_ids: list[str], bm25_ids: list[str], top_ids: list[str]) -> None:
+    if not _logger.isEnabledFor(logging.DEBUG):
+        return
+    for chunk_id in top_ids:
+        dense_rank = dense_ids.index(chunk_id) + 1 if chunk_id in dense_ids else None
+        bm25_rank = bm25_ids.index(chunk_id) + 1 if chunk_id in bm25_ids else None
+        legs = [name for name, rank in (("dense", dense_rank), ("bm25", bm25_rank)) if rank is not None]
+        _logger.debug(
+            "retrieval leg breakdown: query=%r chunk_id=%s legs=%s dense_rank=%s bm25_rank=%s",
+            query, chunk_id, legs, dense_rank, bm25_rank,
+        )
 
 
 def _build_filters(filters: dict | None) -> tuple[str, list]:
@@ -115,8 +137,7 @@ def search_kb(query: str, k: int = 6, filters: dict | None = None, expand: bool 
     exact matched chunk. With expand=True, also add "section_text": the
     full section it came from (see expand_to_section), for when a single
     chunk cuts off mid-table or mid-list."""
-    client = InferenceClient(token=os.environ.get("HF_TOKEN"))
-    query_vector = client.feature_extraction(query, model=EMBEDDING_MODEL, normalize=True)
+    query_vector = embed(query, model=EMBEDDING_MODEL)
 
     where_sql, params = _build_filters(filters)
     db = get_db()
@@ -124,6 +145,7 @@ def search_kb(query: str, k: int = 6, filters: dict | None = None, expand: bool 
     bm25_ids = _bm25_search(db, query, where_sql, params)
     fused = _reciprocal_rank_fusion(dense_ids, bm25_ids)
     top_ids = sorted(fused, key=fused.get, reverse=True)[:k]
+    _log_retrieval_debug(query, dense_ids, bm25_ids, top_ids)
 
     if not top_ids:
         db.close()
