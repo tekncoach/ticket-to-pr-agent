@@ -10,10 +10,28 @@
 # only returns them; it does not enforce citation or refusal itself.
 from __future__ import annotations
 
+import httpx
+
 from agent.runtime import Tool, ToolResult
 from rag.retrieve import search_kb as _search_kb
 
-_ALLOWED_FILTER_KEYS = ("source", "title", "section", "acl", "collection")
+# "acl" is deliberately NOT in this list. It used to be, alongside source/
+# title/section/collection, which meant the model (or untrusted text it's
+# reasoning over — a ticket body, a fetched issue) could call search_kb
+# with filters={"acl": "internal"} and the equality filter in
+# rag/retrieve.py's _build_filters() would honor it: a privilege-escalation
+# path with no server-side override. Which ACL bucket gets searched is a
+# caller-identity decision, not a search parameter the caller gets to
+# choose — the same reasoning as bash's workspace confinement or
+# edit_file's denylist, enforced in code, not left as a schema convention
+# a model could ignore or a hostile prompt could exploit.
+_ALLOWED_FILTER_KEYS = ("source", "title", "section", "collection")
+
+# This project's auth model today is a single service account — no
+# per-user identity to vary this by (see docs/research/mcp-server.md for
+# the not-yet-built per-user rights design). Hardcoded until that exists;
+# the trigger to revisit is the same one named there.
+DEFAULT_ACL = "public"
 
 
 def _handler(arguments: dict) -> ToolResult:
@@ -21,11 +39,15 @@ def _handler(arguments: dict) -> ToolResult:
     if not query:
         return ToolResult(ok=False, error_code="missing_query")
 
+    filters = dict(arguments.get("filters") or {})
+    filters.pop("acl", None)  # defense in depth: never trust a caller-supplied value, even if the schema is ever loosened
+    filters["acl"] = DEFAULT_ACL
+
     try:
         results = _search_kb(
             query,
             k=arguments.get("k", 6),
-            filters=arguments.get("filters"),
+            filters=filters,
         )
     except ValueError as exc:
         # _build_filters' own guard against an unknown filter key — a
@@ -33,6 +55,12 @@ def _handler(arguments: dict) -> ToolResult:
         # generic handler_error runtime.py's tool-dispatch loop would
         # otherwise produce for any other exception.
         return ToolResult(ok=False, error_code=f"invalid_filters: {exc}")
+    except httpx.HTTPError as exc:
+        # The embedding call (Hugging Face Inference Providers) is a
+        # network call like any other tool's — a timeout or 5xx here
+        # shouldn't surface as an opaque handler_error, same reasoning
+        # as fetch_ticket's own httpx.RequestError handling.
+        return ToolResult(ok=False, error_code=f"embedding_service_error: {exc}")
 
     # rag.retrieve.search_kb's "source" is the corpus's real, absolute
     # local filesystem path — fine for rag/query.py's human-facing CLI,

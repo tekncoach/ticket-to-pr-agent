@@ -27,13 +27,13 @@ def test_successful_search_returns_data():
     assert result.data == [{"id": "Doc#0.0", "text": "x", "score": 0.5,
                              "title": "Doc", "citation": "[Doc#0.0]"}]
     assert "source" not in result.data[0]
-    mock_search.assert_called_once_with("what is x?", k=3, filters=None)
+    mock_search.assert_called_once_with("what is x?", k=3, filters={"acl": "public"})
 
 
 def test_default_k_is_six_when_not_specified():
     with patch("tools.search_kb._search_kb", return_value=[]) as mock_search:
         search_kb.handler({"query": "anything"})
-    mock_search.assert_called_once_with("anything", k=6, filters=None)
+    mock_search.assert_called_once_with("anything", k=6, filters={"acl": "public"})
 
 
 def test_invalid_filter_key_reported_specifically():
@@ -42,3 +42,37 @@ def test_invalid_filter_key_reported_specifically():
 
     assert not result.ok
     assert result.error_code == "invalid_filters: unknown filter: nope"
+
+
+def test_caller_supplied_acl_is_overridden_not_honored():
+    # Regression test for a real, code-confirmed finding (a10x coach
+    # review, Day 4): the tool's filters used to pass "acl" straight
+    # through to the equality filter in rag/retrieve.py's
+    # _build_filters(), so a model (or untrusted text it's reasoning
+    # over, e.g. a ticket body) could ask for filters={"acl": "internal"}
+    # and get it — a privilege-escalation path with no server-side
+    # override. Which ACL bucket gets searched must never come from the
+    # caller's own request.
+    with patch("tools.search_kb._search_kb", return_value=[]) as mock_search:
+        search_kb.handler({"query": "x", "filters": {"acl": "internal", "title": "Doc"}})
+
+    called_filters = mock_search.call_args.kwargs["filters"]
+    assert called_filters["acl"] == "public"
+    assert called_filters["title"] == "Doc"  # other, legitimate filters still pass through
+
+
+def test_acl_not_exposed_in_the_tool_schema():
+    # The schema is a hint to the model, not the actual boundary (the
+    # handler enforces it regardless) — but it should not even suggest
+    # "acl" as something the caller can choose.
+    assert "acl" not in search_kb.input_schema["properties"]["filters"]["properties"]
+
+
+def test_embedding_service_error_reported_specifically():
+    import httpx
+    request = httpx.Request("POST", "https://router.huggingface.co/hf-inference")
+    with patch("tools.search_kb._search_kb", side_effect=httpx.ConnectError("boom", request=request)):
+        result = search_kb.handler({"query": "x"})
+
+    assert not result.ok
+    assert result.error_code.startswith("embedding_service_error:")
