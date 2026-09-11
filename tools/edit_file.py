@@ -26,6 +26,7 @@
 # bash's workspace confinement.
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from agent.config import AUTH_SENSITIVE_SYMBOLS, WORKSPACE
@@ -45,12 +46,15 @@ def _is_denied(path: Path) -> bool:
 
 
 def _touches_auth_symbol(*texts: str) -> str | None:
-    """None if none of AUTH_SENSITIVE_SYMBOLS appears in any of texts,
-    otherwise the first symbol found. Checked against both the before and
-    after text of a write: a diff that *removes* an auth check is exactly
-    as much an auth change as one that adds a call to one."""
+    """None if none of AUTH_SENSITIVE_SYMBOLS appears as a whole word in any
+    of texts, otherwise the first symbol found. Word-boundary matched so
+    get_session_user doesn't also flag get_session_user_v2 or a comment that
+    merely mentions the name. Checked against both the before and after text
+    of a write: a diff that *removes* an auth check is exactly as much an
+    auth change as one that adds a call to one."""
     for symbol in AUTH_SENSITIVE_SYMBOLS:
-        if any(symbol in text for text in texts):
+        pattern = rf"\b{re.escape(symbol)}\b"
+        if any(re.search(pattern, text) for text in texts):
             return symbol
     return None
 

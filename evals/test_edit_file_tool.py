@@ -150,6 +150,20 @@ def test_insert_blocked_when_insert_text_contains_an_auth_symbol(tmp_path):
     assert (tmp_path / "app.py").read_text() == "line1\n"
 
 
+def test_symbol_name_appearing_only_as_a_substring_is_not_blocked(tmp_path):
+    # Coach review (Day 4, Response 13): a plain substring check would also
+    # flag get_session_user_v2 or a comment merely mentioning the name.
+    # Word-boundary matching is the fix — this is that regression test.
+    (tmp_path / "app.py").write_text("def handler():\n    pass\n")
+    result = _call_with_auth_symbols(
+        tmp_path, ("get_session_user",),
+        command="str_replace", path="app.py",
+        old_str="pass", new_str="return get_session_user_v2()",
+    )
+    assert result.ok
+    assert (tmp_path / "app.py").read_text() == "def handler():\n    return get_session_user_v2()\n"
+
+
 def test_edit_with_no_auth_symbols_configured_is_unaffected(tmp_path):
     # Regression guard: an empty/no-op symbol list must not block ordinary
     # edits — this is what every other test in this file already relies on.
