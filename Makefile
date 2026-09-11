@@ -1,4 +1,4 @@
-.PHONY: agent run mcp-server ingest eval docker-up
+.PHONY: agent run mcp-server ingest rag-query eval docker-up
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -16,9 +16,16 @@ run:
 mcp-server:
 	uv run --env-file .env python -m agent.mcp_server
 
-# Ingest the liberty-rider corpus into the vector store (real on Day 4).
+# Ingest every data/kb/manifest.json entry into the vector + FTS store.
+# Needs .env (HF_TOKEN) — see docs/. Was a placeholder before Day 4; the
+# real corpus is engineering good-practices content, not the target repo.
 ingest:
-	uv run python -m rag.ingest --path data/corpus
+	uv run --env-file .env python -m rag.build_corpus
+
+# Manually explore search_kb: `make rag-query Q="your question"`, or with
+# no Q, drops into a loop that reads one question per line.
+rag-query:
+	uv run --env-file .env python -m rag.query "$(Q)"
 
 # Run the unit / regression suite. Runs without an LLM key.
 eval:
