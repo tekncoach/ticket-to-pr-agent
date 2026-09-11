@@ -60,6 +60,10 @@ cp data/kb/manifest.example.json data/kb/manifest.json
 # edit it to point at your own corpus, then:
 make ingest
 make rag-query Q="a question about what you just ingested"
+
+# Add one more source without hand-editing the manifest (.md or .pdf):
+uv run --env-file .env python -m rag.add_source /path/to/doc.pdf \
+  --license "..." --reviewed
 ```
 
 Nothing writes to the target repo until `SHADOW_MODE=false` is set explicitly — the default is read-only by design.

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from rag.ingest import chunk_markdown, embed_and_upsert
+from rag.ingest import chunk_file, embed_and_upsert
 
 MANIFEST_PATH = Path("data/kb/manifest.json")
 
@@ -31,7 +31,7 @@ def main() -> None:
         if not entry.get("pii_reviewed"):
             print(f"SKIP (not PII-reviewed): {title}")
             continue
-        chunks = chunk_markdown(path)
+        chunks = chunk_file(path)
         n = embed_and_upsert(chunks, collection=entry.get("layer", "default"))
         total += n
         print(f"{n:>3} chunks  {title}")
