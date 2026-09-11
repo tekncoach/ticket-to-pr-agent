@@ -1,4 +1,4 @@
-.PHONY: agent run mcp-server ingest rag-query eval docker-up
+.PHONY: agent run mcp-server ingest rag-query eval docker-up coach-zip
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -35,3 +35,12 @@ eval:
 # exist yet — this target is a placeholder until Day 6 owns deployment.
 docker-up:
 	docker compose -f deploy/docker-compose.yml up --build
+
+# A file-attachment-ready zip for the a10x coach: exactly HEAD's git-tracked
+# tree (so .env/.venv/data/tmp can never appear — they were never tracked)
+# minus uv.lock (a 280KB+ dependency lockfile with zero review value).
+# scripts/make_coach_bundle.py is the pasted-text alternative for a
+# --only-scoped, targeted review instead of the whole repo at once.
+coach-zip:
+	git archive --format=zip -o /tmp/ticket-to-pr-agent-coach-bundle.zip HEAD -- . ':!uv.lock'
+	@echo "-> /tmp/ticket-to-pr-agent-coach-bundle.zip"

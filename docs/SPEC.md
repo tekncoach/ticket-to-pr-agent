@@ -84,7 +84,7 @@ The upgrade path — external per-run sandboxes, or the Claude Agent SDK / Claud
 
 ## Deferred architecture decisions
 
-Real forks named now, each with a stated default (POC) and a stated trigger to revisit (production) — full design in [`docs/research/spec.md`](research/spec.md): execution isolation (Docker + serialized worktrees today), GitHub integration (hand-written REST today), and the auth-enforcement gap noted below. `docs/research/rag.md` and `docs/research/secrets-redaction.md` cover the forks specific to those subsystems.
+Real forks named now, each with a stated default (POC) and a stated trigger to revisit (production) — full design in [`docs/research/spec.md`](research/spec.md): execution isolation (Docker + serialized worktrees today), GitHub integration (hand-written REST today). `docs/research/rag.md` and `docs/research/secrets-redaction.md` cover the forks specific to those subsystems.
 
 ## Out of scope
 
@@ -93,4 +93,4 @@ The agent never touches these paths. A prompt instruction alone would be a sugge
 1. Crypto changes — `crypto.py` denied entirely.
 2. Database migrations — `migrations/` denied entirely.
 
-**Auth is named in scope but not actually enforced by the denylist**: it lives inside `app.py`, shared with unrelated code, and there is no dedicated auth file a path-level denylist can isolate. Today this boundary is a prompt instruction only — see [`docs/research/spec.md`](research/spec.md) for what closing that gap would take.
+**Auth is named in scope, and now enforced past what a path denylist alone can do.** Auth logic lives inside `app.py`, shared with unrelated code — no dedicated auth file exists for a path-level denylist to isolate, so "no auth changes" as a policy needed a different mechanism: `edit_file._touches_auth_symbol()` scans whatever text a write would add or remove for a name in `agent.config.AUTH_SENSITIVE_SYMBOLS` (e.g. `get_session_user`, `_is_cross_site`, `SESSION_COOKIE` — the reference target's own auth identifiers) and blocks the write if found, independent of which file it's in. Coach-flagged, then closed the same session — see `tools/edit_file.py`'s own comment for the reasoning and `evals/test_edit_file_tool.py` for the coverage (both directions: adding an auth symbol, and removing one).

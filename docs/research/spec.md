@@ -1,6 +1,6 @@
-# SPEC — research: execution isolation, GitHub integration, auth enforcement
+# SPEC — research: execution isolation, GitHub integration
 
-Companion to [`docs/SPEC.md`](../SPEC.md), which describes the current design and what's built. These are the pipeline-level forks named there but not built.
+Companion to [`docs/SPEC.md`](../SPEC.md), which describes the current design and what's built. These are the pipeline-level forks named there but not built. (The auth-enforcement gap once tracked here was closed — see `docs/SPEC.md`'s "Out of scope" section and `tools/edit_file.py`'s `_touches_auth_symbol()`.)
 
 ## Execution isolation
 
@@ -15,9 +15,3 @@ Companion to [`docs/SPEC.md`](../SPEC.md), which describes the current design an
 *Default (POC):* hand-written calls for speed. `gh` CLI is not more professional than a typed client — it is a different tradeoff: it inherits `gh auth` and ships fast, but its "schema" becomes a CLI argument surface with weaker validation, subprocess-level testing, and `gh`'s stderr as the error contract.
 
 *Revisit at Day 5 / production:* a typed client (`PyGithub`) or raw REST with an explicit schema, once the tool must survive rate limits, retries, and structured error handling in front of a customer.
-
-## Auth enforcement gap in `edit_file`'s denylist
-
-Auth logic lives inside `app.py`, shared with unrelated code — there is no dedicated auth file a path-level denylist can isolate, so "no auth changes" is a prompt instruction today, not an enforced boundary (the gap `docs/SPEC.md`'s own rule — a suggestion isn't a boundary — says not to trust).
-
-*Revisit:* once auth logic is extracted to its own module, or `edit_file` gets a line-range or symbol-level guard. Neither built.

@@ -27,3 +27,19 @@ WORKSPACE = Path(os.environ.get("TARGET_WORKSPACE", str(_default_workspace)))
 # we don't have.
 _default_sessions_dir = Path(__file__).resolve().parent.parent / "tmp" / "sessions"
 SESSIONS_DIR = Path(os.environ.get("SESSIONS_DIR", str(_default_sessions_dir)))
+
+# Coach review (Day 4): edit_file's path denylist can block a whole file
+# (crypto.py) but can't isolate "no auth changes" when auth logic lives
+# inside a shared file like app.py, alongside unrelated code — a path-level
+# denylist has no concept of "this part of the file." These are the
+# specific symbol names a diff touching them should be treated as an auth
+# change even inside an otherwise-allowed file. Defaults match the
+# reference target's (liberty-rider-myroadtrips) own auth code — that's
+# real, not arbitrary, but also repo-specific: a different TARGET_REPO
+# needs its own list, which is exactly why this is env-configurable rather
+# than a constant inside tools/edit_file.py.
+AUTH_SENSITIVE_SYMBOLS = tuple(
+    s.strip() for s in os.environ.get(
+        "AUTH_SENSITIVE_SYMBOLS", "get_session_user,_is_cross_site,SESSION_COOKIE",
+    ).split(",") if s.strip()
+)
