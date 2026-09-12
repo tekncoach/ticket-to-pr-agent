@@ -14,4 +14,4 @@ Companion to [`docs/SPEC.md`](../SPEC.md), which describes the current design an
 
 *Default (POC):* hand-written calls for speed. `gh` CLI is not more professional than a typed client — it is a different tradeoff: it inherits `gh auth` and ships fast, but its "schema" becomes a CLI argument surface with weaker validation, subprocess-level testing, and `gh`'s stderr as the error contract.
 
-*Revisit at Day 5 / production:* a typed client (`PyGithub`) or raw REST with an explicit schema, once the tool must survive rate limits, retries, and structured error handling in front of a customer.
+*Revisit at production:* a typed client (`PyGithub`) or raw REST with an explicit schema, once the tool must survive rate limits, retries, and structured error handling in front of a customer.

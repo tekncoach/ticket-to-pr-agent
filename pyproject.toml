@@ -7,16 +7,15 @@ requires-python = ">=3.12"
 dependencies = [
     # Model access: the raw Anthropic SDK (Messages API). We write the
     # tool-calling loop ourselves (plain function-calling loop, no framework)
-    # so the agent mechanism stays 100% ours — that is the point of Days 3 & 5.
+    # so the agent mechanism stays 100% ours.
     # No LiteLLM (a multi-provider layer we don't need) and no LangGraph
     # (a loop framework that would hide what we're here to learn).
     "anthropic>=0.69",
     # Service layer (agent/service.py): /health + /v1/chat around the same
     # AgentRuntime agent/cli.py uses (agent/factory.py builds both). Removed
-    # after hello_agent.py's retirement, reinstated once Day 2's own drill
-    # ("what else must it have for the hour to have been worth it? -> /health
-    # and one structured log line per turn") made clear the service surface
-    # itself was never optional, only the Day-2 file implementing it was.
+    # after hello_agent.py's retirement, then reinstated: the service surface
+    # (/health plus one structured log line per turn) was never optional —
+    # only the throwaway file that first implemented it was.
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "pydantic>=2.9",
@@ -36,7 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Pulled in on Day 4 when retrieval over the liberty-rider corpus goes real.
+# Pulled in when retrieval over the knowledge-base corpus goes real.
 # Kept out of the base install so the service boots with zero DB dependencies.
 rag = [
     "psycopg[binary]>=3.2",
@@ -48,7 +47,7 @@ dev = [
 
 # An application, not an installable library — uv manages the venv + deps
 # but does not build/install the project itself. Decomposed into agent/ and
-# tools/ packages since Day 3; still no build backend, since nothing
+# tools/ packages; still no build backend, since nothing
 # consumes this as an installed dependency.
 [tool.uv]
 package = false

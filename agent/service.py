@@ -1,8 +1,7 @@
 # agent/service.py
 #
-# The FastAPI service — parity target: hello_agent.py's Day 2 /health +
-# /v1/chat, rebuilt around the current agent/runtime.py instead of the
-# single-tool Day 2 loop. Kept alongside agent/cli.py, not instead of it —
+# The FastAPI service — /health + /v1/chat around the current
+# agent/runtime.py. Kept alongside agent/cli.py, not instead of it —
 # both build their AgentRuntime from agent/factory.py.
 #
 # Run it:   uv run uvicorn agent.service:app --reload

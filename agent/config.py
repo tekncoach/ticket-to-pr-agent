@@ -28,7 +28,7 @@ WORKSPACE = Path(os.environ.get("TARGET_WORKSPACE", str(_default_workspace)))
 _default_sessions_dir = Path(__file__).resolve().parent.parent / "tmp" / "sessions"
 SESSIONS_DIR = Path(os.environ.get("SESSIONS_DIR", str(_default_sessions_dir)))
 
-# Coach review (Day 4): edit_file's path denylist can block a whole file
+# edit_file's path denylist can block a whole file
 # (crypto.py) but can't isolate "no auth changes" when auth logic lives
 # inside a shared file like app.py, alongside unrelated code — a path-level
 # denylist has no concept of "this part of the file." These are the

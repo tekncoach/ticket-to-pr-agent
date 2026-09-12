@@ -2,10 +2,9 @@
 process — AgentRuntime.run() should catch it and return a bounded
 llm_call_failed result instead of propagating the exception.
 
-Coach's review after Fix #2 landed: "llm_call_error is emitted and
-returned, but nothing in this diff shows a test asserting that path ...
-right now that fix is proven by inspection, not by a red test." This is
-that test.
+llm_call_error was emitted and returned, but nothing asserted that path —
+the behaviour was proven by inspection rather than by a red test. This is
+that red test.
 
 No live API call: AgentRuntime._llm is patched to raise directly, so this
 needs no real network access and no real API key (a fake one satisfies
@@ -44,7 +43,7 @@ def test_llm_connection_error_returns_bounded_failure_not_a_crash(monkeypatch):
 
 
 def test_a_bug_in_our_own_code_still_crashes_loud(monkeypatch):
-    # The scoping the coach called out: catching anthropic.APIError
+    # The scoping that makes this safe: catching anthropic.APIError
     # specifically, not bare Exception, means a real bug elsewhere (e.g. in
     # _anthropic_tools()) must still propagate instead of being laundered
     # into "the LLM failed."

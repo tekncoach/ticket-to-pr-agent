@@ -1,6 +1,5 @@
-"""Coach review, Day 4: "no dedicated retrieval-quality logging (which leg
-contributed which candidates, whether BM25 or dense found the eventual top
-hit)." Hermetic: embed() and both search legs are mocked, a real tmp
+"""Retrieval-quality logging: which leg contributed which candidates, and
+whether BM25 or dense found the eventual top hit. Hermetic: embed() and both search legs are mocked, a real tmp
 sqlite db backs the chunk_meta lookup — no live HF call, no key needed.
 """
 import logging

@@ -10,7 +10,7 @@ Companion to [`docs/RAG-CONTEXT-EXPANSION.md`](../RAG-CONTEXT-EXPANSION.md) (wha
 
 **Contextual Retrieval (Anthropic).** Distinct from expansion: instead of adding context *after* retrieval, this improves the *matching* itself — before embedding/indexing, prepend a short LLM-generated sentence to each chunk situating it in the document ("this chunk is from SPEC.md's SLOs section, discussing the north-star metric") so both the dense and BM25 index carry that context, not just the raw chunk text.
 
-*Not built because:* it costs one LLM call per chunk at ingest time (real, ongoing cost, not a one-time build cost) and neither of Day 4's two diagnosed retrieval misses (the DORA cross-lingual gap, the SLOs section ranking 24th for its own query) were conclusively shown to be a *missing-context* problem rather than an embedding-model or fusion-weighting one. *Trigger to revisit:* the smoke-set's hit@k measurement shows a pattern of misses this technique specifically targets — a chunk that's individually ambiguous out of context — rather than guessing it would help.
+*Not built because:* it costs one LLM call per chunk at ingest time (real, ongoing cost, not a one-time build cost) and neither of the two diagnosed retrieval misses (the DORA cross-lingual gap, the SLOs section ranking 24th for its own query) were conclusively shown to be a *missing-context* problem rather than an embedding-model or fusion-weighting one. *Trigger to revisit:* the smoke-set's hit@k measurement shows a pattern of misses this technique specifically targets — a chunk that's individually ambiguous out of context — rather than guessing it would help.
 
 ## Vector store at scale
 

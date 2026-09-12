@@ -4,9 +4,9 @@
 # specific error type — both rag/ingest.py (batch ingestion) and
 # rag/retrieve.py (query time) had their own unguarded
 # client.feature_extraction() call; factored here so a fix to retry/error
-# handling can't land in one and drift from the other (coach review,
-# Day 4: "client.feature_extraction calls in both rag/ingest.py and
-# rag/retrieve.py have no error handling").
+# handling can't land in one and drift from the other — before this, the
+# client.feature_extraction() calls in both files had no error handling at
+# all.
 from __future__ import annotations
 
 import os

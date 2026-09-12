@@ -3,9 +3,8 @@
 All hermetic — tmp_path stands in for WORKSPACE, no dependency on a real
 target repo checkout. No LLM call, no live service, no key required.
 
-Coach's Day 3 review, Top Fix #1: "bash's allowlist/pipeline handling ...
-has zero test coverage" and "show me the test that fails if the guard
-regresses." This is that test.
+Written to answer one question: which test fails if bash's
+allowlist/pipeline guard regresses? This one.
 """
 from unittest.mock import patch
 

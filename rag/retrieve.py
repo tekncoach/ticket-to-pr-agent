@@ -24,10 +24,10 @@ _RRF_K = 60  # standard RRF constant; not tuned against a real smoke set yet
 
 _FTS5_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
-# Coach review, Day 4: "no dedicated retrieval-quality logging (which leg
-# contributed which candidates, whether BM25 or dense found the eventual
-# top hit) that would let you debug 'why did retrieval miss this doc'
-# without re-running the query by hand." Standard library logging, not a
+# Retrieval-quality logging: which leg contributed which candidates, and
+# whether BM25 or dense found the eventual top hit — enough to debug "why
+# did retrieval miss this doc" without re-running the query by hand.
+# Standard library logging, not a
 # new file format or a coupling to agent/event_sink.py's run-scoped
 # trace — search_kb() is called from the CLI and tests too, not just a
 # tool call inside a run. Enable with logging.getLogger("rag.retrieve")
@@ -168,7 +168,7 @@ def search_kb(query: str, k: int = 6, filters: dict | None = None, expand: bool 
             # A fused RRF score, not a raw similarity — the two legs live on
             # incomparable scales (see module docstring), so there is no
             # single "distance" left to report once they're combined. The
-            # grounding threshold τ (Day 4's INSUFFICIENT_CONTEXT rule) has
+            # grounding threshold τ (the INSUFFICIENT_CONTEXT rule) has
             # to be calibrated against *this* number, on the real smoke
             # set — not reused from the dense-only score's old range.
             "score": fused[chunk_id],

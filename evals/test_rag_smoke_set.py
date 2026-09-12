@@ -1,7 +1,6 @@
-"""The Day 4 smoke set (docs/RAG-SMOKE-SET.md), turned into a runnable
-fixture — coach review, three review rounds running: "a table in markdown
-is not a regression fixture... today's honest numbers can silently
-regress with zero signal."
+"""The retrieval smoke set (docs/RAG-SMOKE-SET.md), turned into a runnable
+fixture. A table in markdown is not a regression fixture: today's honest
+numbers can silently regress with zero signal.
 
 Most of this needs a live HF_TOKEN and an already-built corpus
 (data/kb/kb.sqlite3) — neither exists in CI, same status as betterleaks'
@@ -87,7 +86,7 @@ def test_multihop_query_singh_source_is_a_known_miss_at_single_query_hit6():
 
 @_LIVE_AGENT
 def test_held_out_in_domain_sounding_query_calls_search_kb_before_refusing():
-    # The specific gap named across coach reviews and docs/RAG-SMOKE-SET.md:
+    # The specific gap named in docs/RAG-SMOKE-SET.md:
     # refusal on an obviously off-topic question (tungsten's boiling point)
     # was happening without ever calling search_kb — safe by luck, not by
     # the designed mechanism. This query is deliberately NOT obviously

@@ -3,8 +3,8 @@ output — because agent/runtime.py's emit() serializes ToolResult.data
 directly into the persisted JSONL trace. If the token ever leaked into
 ToolResult, it would leak into every log file for that run too.
 
-Coach's Day 3 review: "No secrets-in-logs check anywhere (GITHUB_TOKEN
-never logged, but nothing asserts that)." This is that assertion.
+GITHUB_TOKEN is never logged today, but nothing asserted that until this
+test — an invariant nothing enforces is an invariant that decays.
 
 No live GitHub call: httpx.get is mocked, so this needs no real network
 access and no real token — GITHUB_TOKEN is a fake, distinctive value for

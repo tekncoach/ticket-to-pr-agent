@@ -2,8 +2,9 @@
 #
 # Reads data/kb/manifest.json (gitignored, like the rest of data/ — the
 # manifest names local paths outside this repo, some pointing at private
-# research notes, and is the license/PII tracking table Day 4 asks for,
-# not a separate document) and ingests every reviewed entry.
+# research notes, and doubles as the license/PII tracking table rather
+# than duplicating it in a separate document) and ingests every reviewed
+# entry.
 #
 # Run it:  uv run --env-file .env python -m rag.build_corpus
 from __future__ import annotations

@@ -1,6 +1,6 @@
-# RAG smoke set — Day 4's last task
+# RAG smoke set
 
-10 queries against the real 303-chunk corpus (5 answerable / 3 unanswerable / 2 multi-hop), hit@6 and citation accuracy recorded by hand, against the live agent (`agent.factory.build_runtime()`), not just `search_kb()` in isolation — Day 4's own deliverable is "citation-enforced answers," not raw retrieval.
+10 queries against the real 303-chunk corpus (5 answerable / 3 unanswerable / 2 multi-hop), hit@6 and citation accuracy recorded by hand, against the live agent (`agent.factory.build_runtime()`), not just `search_kb()` in isolation — what is being measured is citation-enforced answers, not raw retrieval.
 
 ## The queries and what they found
 
@@ -28,7 +28,7 @@ Both fixes also happened to resolve A4: with `search_kb` reliably called (fix 1)
 
 ## What's still not fixed, and why
 
-**Refusal doesn't verify via retrieval first (U1-U3).** All three still get refused correctly in outcome, but via the model's own general judgment ("this isn't a coding question") rather than by calling `search_kb`, checking the score, and emitting the specified `INSUFFICIENT_CONTEXT: <what is missing>` format. Safe today because these three are obviously off-topic — but this means the *mechanism* Day 4 asks for isn't actually what's producing the safe outcome, and a query that merely *sounds* in-domain but isn't covered by the corpus is untested. Not fixed here: the two changes made were targeted at the failures actually observed (wandering, citation format), not a speculative third prompt iteration for a gap that hasn't been shown to cause a wrong answer yet.
+**Refusal doesn't verify via retrieval first (U1-U3).** All three still get refused correctly in outcome, but via the model's own general judgment ("this isn't a coding question") rather than by calling `search_kb`, checking the score, and emitting the specified `INSUFFICIENT_CONTEXT: <what is missing>` format. Safe today because these three are obviously off-topic — but this means the designed mechanism isn't actually what's producing the safe outcome, and a query that merely *sounds* in-domain but isn't covered by the corpus is untested. Not fixed here: the two changes made were targeted at the failures actually observed (wandering, citation format), not a speculative third prompt iteration for a gap that hasn't been shown to cause a wrong answer yet.
 
 **A numeric grounding threshold τ is not reliable at this scale — measured, not assumed.** Queried the three genuinely unanswerable questions directly against `search_kb`: their top scores (0.0164–0.0323) fall squarely inside the same range as correct hits (0.026–0.033) *and* inside A4's wrong-but-confident hit (0.0318). The fused RRF score does not cleanly separate "actually relevant" from "coincidentally similar" at this corpus size. `GROUNDING`'s refusal rule is worded around the model judging whether retrieved *text* supports the question, not a score cutoff — because the score alone, checked directly, does not carry that signal here.
 

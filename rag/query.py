@@ -2,8 +2,8 @@
 #
 # A thin CLI over search_kb() for manually exploring what's in the index —
 # raw retrieval results (score, citation, text), not a grounded LLM answer.
-# Separate from wiring search_kb into AgentRuntime as a real tool (Day 4's
-# remaining task) — that's for the agent; this is for a human to look.
+# Separate from search_kb as a registered AgentRuntime tool — that path is
+# for the agent, this one is for a human to look.
 from __future__ import annotations
 
 import sys

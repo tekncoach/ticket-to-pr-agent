@@ -5,8 +5,8 @@
 # calls a model itself. The model, if any, lives on the MCP client side
 # (Claude Desktop, another agent, ...); we just answer "here's the ticket."
 #
-# Streamable HTTP, not stdio: Day 3 explicitly points at the "stateless
-# request/response core" of the current (2026-07-28) spec, which stdio has
+# Streamable HTTP, not stdio: we want the "stateless request/response
+# core" of the current (2026-07-28) spec, which stdio has
 # no equivalent concept for (no auth, no request/response framing over a
 # transport — it's just a subprocess pipe). stateless_http=True is passed
 # explicitly: the SDK's default (False) still layers an optional session

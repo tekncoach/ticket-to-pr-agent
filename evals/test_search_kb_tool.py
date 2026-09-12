@@ -45,8 +45,8 @@ def test_invalid_filter_key_reported_specifically():
 
 
 def test_caller_supplied_acl_is_overridden_not_honored():
-    # Regression test for a real, code-confirmed finding (a10x coach
-    # review, Day 4): the tool's filters used to pass "acl" straight
+    # Regression test for a real, code-confirmed finding: the tool's
+    # filters used to pass "acl" straight
     # through to the equality filter in rag/retrieve.py's
     # _build_filters(), so a model (or untrusted text it's reasoning
     # over, e.g. a ticket body) could ask for filters={"acl": "internal"}

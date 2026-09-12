@@ -1,4 +1,4 @@
-# agent/runtime.py skeleton
+# agent/runtime.py
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -143,8 +143,7 @@ class AgentRuntime:
             trace.append(event)
             self.logger.emit(run_id, event)
 
-        # Day 3's drill, verbatim: a repeated identical tool call is a spin,
-        # not progress. The loop has no memory of its own otherwise — this
+        # A repeated identical tool call is a spin, not progress. The loop has no memory of its own otherwise — this
         # set is that memory, scoped to this run only. Known future
         # exception, not yet needed: a legitimate polling tool (get_ci_status)
         # would want to call itself again with the same args; not built yet,
@@ -157,14 +156,14 @@ class AgentRuntime:
             except anthropic.APIError as exc:
                 # Covers APIConnectionError (network/timeout), APIStatusError
                 # and its subclasses (RateLimitError, InternalServerError —
-                # the "network timeout or 5xx" the Day 3 review named) —
-                # anything the SDK itself classifies as an API-layer failure.
+                # i.e. network timeouts and 5xx) — anything the SDK itself
+                # classifies as an API-layer failure.
                 # Deliberately NOT a bare `except Exception`: a real bug in
                 # our own code (e.g. a KeyError in _anthropic_tools) should
                 # still crash loudly, not be absorbed into "the LLM failed."
-                # No retry/backoff here — that is Day 5's job by name
-                # ("Error handling, retries, and real integration"); this is
-                # the minimum so a transient failure is a bounded, reported
+                # No retry/backoff here yet — that is a separate concern
+                # (error handling and retries as a policy layer); this is the
+                # minimum so a transient failure is a bounded, reported
                 # outcome instead of an uncaught exception with no final event.
                 emit({
                     "event": "llm_call_error", "run_id": run_id, "ts": _now_iso(),
@@ -175,7 +174,7 @@ class AgentRuntime:
                     "error": "llm_call_failed",
                     "answer": (
                         f"Stopping: the model call failed ({type(exc).__name__}). "
-                        "No retry attempted here — that is Day 5's job."
+                        "No retry was attempted."
                     ),
                     "trace": trace,
                 }

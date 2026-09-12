@@ -4,9 +4,8 @@ the denylist, and str_replace's ambiguous-match refusal.
 All hermetic — tmp_path stands in for WORKSPACE, no dependency on a real
 target repo checkout. No LLM call, no live service, no key required.
 
-Coach's Day 3 review, Top Fix #1: "edit_file's path-escape/denylist/
-ambiguous-match logic ... has zero test coverage" and "show me the test
-that fails if edit_file's denylist regresses." This is that test.
+Written to answer one question: which test fails if edit_file's
+path-escape / denylist / ambiguous-match logic regresses? This one.
 """
 from unittest.mock import patch
 
@@ -93,7 +92,7 @@ def test_insert_at_line_zero(tmp_path):
     assert (tmp_path / "a.txt").read_text().splitlines()[0] == "line0"
 
 
-# --- Coach review (Day 4): a path denylist can't isolate "no auth changes"
+# --- A path denylist can't isolate "no auth changes"
 # when auth logic lives inside a file shared with unrelated code. These
 # tests use a fake symbol list, independent of the real default, so they
 # don't depend on (or accidentally start passing/failing with) whatever
@@ -151,9 +150,9 @@ def test_insert_blocked_when_insert_text_contains_an_auth_symbol(tmp_path):
 
 
 def test_symbol_name_appearing_only_as_a_substring_is_not_blocked(tmp_path):
-    # Coach review (Day 4, Response 13): a plain substring check would also
-    # flag get_session_user_v2 or a comment merely mentioning the name.
-    # Word-boundary matching is the fix — this is that regression test.
+    # A plain substring check would also flag get_session_user_v2, or a
+    # comment merely mentioning the name. Word-boundary matching is the
+    # fix — this is that regression test.
     (tmp_path / "app.py").write_text("def handler():\n    pass\n")
     result = _call_with_auth_symbols(
         tmp_path, ("get_session_user",),

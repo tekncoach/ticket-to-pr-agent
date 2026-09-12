@@ -1,14 +1,12 @@
 # rag/ingest.py
 #
-# Chunking follows the Day 4 90-second drill's own answer key, verbatim in
-# spirit: split on the document's existing headings first, then window any
-# oversized section — never fixed-size chunking as the first pass.
+# Chunking splits on the document's existing headings first, then windows
+# any oversized section — never fixed-size chunking as the first pass.
 # Structure the author already put in the document is free retrieval
 # metadata, and it makes each citation point at something a human can go
 # and find. A sibling chunker for video transcripts (splitting on chapters
 # from METADATA.md when present, same principle applied to a different
-# kind of structure) is a follow-up, not built here — see the Day 4 corpus
-# proposal for that design note.
+# kind of structure) is a follow-up, not built here.
 from __future__ import annotations
 
 import os
@@ -49,10 +47,8 @@ class Chunk(BaseModel):
     title: str
     section: str | None = None
     updated_at: str | None = None
-    # Named in Day 4's own metadata list ({source, title, section,
-    # updated_at, acl}) but missing from the starter template's Chunk
-    # model — added here since this is the real implementation, not the
-    # verbatim skeleton. "public" until a real ACL model exists (see
+    # Part of the chunk metadata set ({source, title, section,
+    # updated_at, acl}). "public" until a real ACL model exists (see
     # docs/MCP-SERVER.md's per-user rights design note for the shape that
     # would fill this in for real).
     acl: str = "public"
@@ -84,8 +80,8 @@ def chunk_markdown(path: Path, max_chars: int = 2200, overlap: int = 300, title:
             # replaces instead of duplicating. Also doubles as a readable
             # citation id ([source#chunk_id] in the GROUNDING prompt) that
             # points a human at roughly where in the document to look —
-            # the same reasoning the drill's own answer gives for chunking
-            # on headings in the first place.
+            # the same reason the chunker splits on headings in the first
+            # place.
             chunks.append(Chunk(
                 id=f"{title}#{section_idx}.{window_idx}",
                 text=window.strip(),
