@@ -8,6 +8,7 @@ import json, os, time, uuid
 import anthropic
 import jsonschema
 
+from agent.errors import ErrorClass, ToolError
 from agent.event_sink import EventSink, JSONLFileSink
 
 # $/MTok, (input, output). Cached prices — re-check against
@@ -225,20 +226,26 @@ class AgentRuntime:
                     # Executed sequentially today (docs/SDLC-schema.md says
                     # why): the cap bounds side effects per turn, it does not
                     # manage concurrency that doesn't exist yet.
-                    result = ToolResult(ok=False, error_code="too_many_parallel_calls")
+                    result = ToolResult(ok=False, error_code=str(ToolError(
+                        ErrorClass.DENIED,
+                        f"more than {self.max_parallel_tool_calls} tool calls in one turn")))
                 else:
                     tool = self.tools.get(block.name)  # .get(), not [block.name]:
                     if tool is None:                   # a hallucinated tool name
-                        result = ToolResult(ok=False, error_code="unknown_tool")
+                        result = ToolResult(ok=False, error_code=str(
+                            ToolError(ErrorClass.VALIDATION, f"unknown tool: {block.name}")))
                     elif tool.side_effect and not self.allow_side_effects:
-                        result = ToolResult(ok=False, error_code="side_effect_not_allowed")
+                        result = ToolResult(ok=False, error_code=str(ToolError(
+                            ErrorClass.DENIED, "side effects are not allowed in this run")))
                     elif (schema_error := self._validate_args(tool, block.input)) is not None:
-                        result = ToolResult(ok=False, error_code=f"invalid_args: {schema_error}")
+                        result = ToolResult(ok=False, error_code=str(
+                            ToolError(ErrorClass.VALIDATION, schema_error)))
                     else:
                         try:
                             result = tool.handler(block.input)
                         except Exception as exc:  # a broken handler must not crash the run
-                            result = ToolResult(ok=False, error_code=f"handler_error: {exc}")
+                            result = ToolResult(ok=False, error_code=str(
+                                ToolError(ErrorClass.INTERNAL, f"{type(exc).__name__}: {exc}")))
 
                 emit({
                     "event": "tool_result", "run_id": run_id, "ts": _now_iso(), "turn": turn,

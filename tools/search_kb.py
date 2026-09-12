@@ -6,6 +6,7 @@
 # agent/factory.py's SYSTEM_PROMPT, not by this tool.
 from __future__ import annotations
 
+from agent.errors import ErrorClass, ToolError
 from agent.runtime import Tool, ToolResult
 from rag.embeddings import EmbeddingServiceError
 from rag.retrieve import search_kb as _search_kb
@@ -29,7 +30,7 @@ DEFAULT_ACL = "public"
 def _handler(arguments: dict) -> ToolResult:
     query = arguments.get("query")
     if not query:
-        return ToolResult(ok=False, error_code="missing_query")
+        return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, "missing query")))
 
     filters = dict(arguments.get("filters") or {})
     filters.pop("acl", None)  # defense in depth: never trust a caller-supplied value, even if the schema is ever loosened
@@ -45,11 +46,12 @@ def _handler(arguments: dict) -> ToolResult:
         # _build_filters' guard against an unknown filter key: a
         # schema-shaped mistake deserves its own error_code, not the
         # generic handler_error the dispatch loop would otherwise produce.
-        return ToolResult(ok=False, error_code=f"invalid_filters: {exc}")
+        return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, str(exc))))
     except EmbeddingServiceError as exc:
         # embed() already retried with backoff before raising — a timeout
         # or 5xx shouldn't surface as an opaque handler_error.
-        return ToolResult(ok=False, error_code=f"embedding_service_unavailable: {exc}")
+        return ToolResult(ok=False, error_code=str(
+            ToolError(ErrorClass.UNAVAILABLE, f"embedding service: {exc}")))
 
     # "source" is the corpus's real absolute local path — fine for the
     # human-facing CLI, not for the agent: seen live handing Claude a target

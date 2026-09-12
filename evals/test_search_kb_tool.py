@@ -10,7 +10,7 @@ from tools.search_kb import search_kb
 def test_missing_query_rejected():
     result = search_kb.handler({})
     assert not result.ok
-    assert result.error_code == "missing_query"
+    assert result.error_code == "validation: missing query"
 
 
 def test_successful_search_returns_data():
@@ -41,7 +41,7 @@ def test_invalid_filter_key_reported_specifically():
         result = search_kb.handler({"query": "x", "filters": {"nope": "y"}})
 
     assert not result.ok
-    assert result.error_code == "invalid_filters: unknown filter: nope"
+    assert result.error_code == "validation: unknown filter: nope"
 
 
 def test_caller_supplied_acl_is_overridden_not_honored():
@@ -78,4 +78,4 @@ def test_embedding_service_error_reported_specifically():
         result = search_kb.handler({"query": "x"})
 
     assert not result.ok
-    assert result.error_code == "embedding_service_unavailable: boom"
+    assert result.error_code == "unavailable: embedding service: boom"
