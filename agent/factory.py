@@ -37,6 +37,26 @@ THINKING_BUDGET_TOKENS = int(os.environ.get("THINKING_BUDGET_TOKENS", "2048"))
 # own "debug a loop you cannot see" technique.
 LIVE_TRACE = os.environ.get("LIVE_TRACE", "false").lower() == "true"
 
+# The runtime already turns a run it abandons into an actionable sentence
+# (agent/runtime.py's stopped(), agent/errors.py's next_step()). This covers the
+# other half: a tool that fails once while the run continues, where what the
+# user ends up seeing is whatever the model decides to say about it. The failure
+# is typed, so the model is told to read the type rather than guess from prose.
+TOOL_FAILURES = (
+    "Every tool failure comes back as '<class>: <detail>', where class is one "
+    "of auth, denied, not_found, validation, rate_limit, unavailable, timeout, "
+    "internal. Read the class, do not guess from the wording. auth and denied "
+    "are final: stop, say plainly what is blocked and that a human has to "
+    "unblock it, and do not try another tool to get around it. rate_limit, "
+    "unavailable and timeout are transient and were already retried before you "
+    "saw them: do not immediately repeat the same call. validation and "
+    "not_found mean your arguments were wrong — fix them and try once more, "
+    "then stop. Never invent a result a tool did not return, and never report "
+    "success you did not observe. When you cannot finish, say what you were "
+    "doing, what stopped you, and the one thing a person should do next — in a "
+    "sentence they can act on, not an error code pasted back at them."
+)
+
 SYSTEM_PROMPT = (
     "You are a coding agent that will grow into a ticket->PR agent. bash "
     "(read-only: grep, cat, find, ls, head, tail, wc, pwd) and "
@@ -52,6 +72,7 @@ SYSTEM_PROMPT = (
     "search_kb at least once before answering or refusing — a refusal "
     "must be grounded in what search_kb actually returned, not skipped "
     "on the assumption that nothing relevant exists. Be concise.\n"
+    + TOOL_FAILURES + "\n"
     + GROUNDING
 )
 

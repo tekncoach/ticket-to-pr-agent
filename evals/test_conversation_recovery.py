@@ -196,3 +196,17 @@ def test_two_different_tools_failing_once_each_does_not_stop_the_run(monkeypatch
         result = runtime.run("go")
 
     assert result["error"] == "max_turns"
+
+
+def test_the_system_prompt_teaches_the_taxonomy_it_will_actually_receive():
+    # The runtime handles the run it abandons. This covers the other half: a
+    # tool failing once while the run continues, where what the user sees is
+    # whatever the model decides to say. A prompt naming classes the code does
+    # not emit would be worse than none.
+    from agent.errors import ErrorClass
+    from agent.factory import TOOL_FAILURES
+
+    for error_class in ErrorClass:
+        assert error_class.value in TOOL_FAILURES, f"{error_class.value} is unmentioned"
+    assert "do not try another tool to get around it" in TOOL_FAILURES
+    assert "never report success you did not observe" in TOOL_FAILURES.lower()

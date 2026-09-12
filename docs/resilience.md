@@ -137,8 +137,12 @@ own 2 retries — wait for the rate-limit window to reset, then run this ticket
 again.
 ```
 
-## Not done
+## What the agent is told
 
-**The agent is not told to degrade gracefully in its own words.** Everything above is the runtime speaking when it gives up. When a tool fails once and the agent keeps going, what the user sees is whatever the model chooses to say about it, and `SYSTEM_PROMPT` gives it no guidance on that.
+Everything above is the runtime speaking when it gives up. A tool that fails once while the run continues is the model's to handle, so `SYSTEM_PROMPT` carries the taxonomy: read the class rather than guessing from the wording, treat `auth` and `denied` as final and do not route around them, do not immediately repeat a transient failure that was already retried, fix arguments once on `validation` or `not_found`, never report a success it did not observe, and when it cannot finish, say what stopped it and the one thing a person should do next.
+
+A test asserts every class the code can emit is named there, so the prompt cannot drift away from the taxonomy it describes.
+
+## Not done
 
 **Nothing resumes.** A run that stops for any of the reasons above starts from scratch when re-run. Work already done — an edit made, a comment posted — is re-derived rather than picked up.
