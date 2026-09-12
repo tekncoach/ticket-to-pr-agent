@@ -54,10 +54,8 @@ def test_missing_code_is_internal():
 
 
 @pytest.mark.parametrize("code, expected", [
-    ("network_error: connection reset", ErrorClass.UNAVAILABLE),
     ("embedding_service_unavailable: 503", ErrorClass.UNAVAILABLE),
-    ("github_token_not_set", ErrorClass.AUTH),
-    ("issue_not_found", ErrorClass.NOT_FOUND),
+    ("string_not_found", ErrorClass.NOT_FOUND),
     ("ambiguous_match", ErrorClass.VALIDATION),
     ("invalid_args: 'query' is a required property", ErrorClass.VALIDATION),
     ("side_effect_not_allowed", ErrorClass.DENIED),

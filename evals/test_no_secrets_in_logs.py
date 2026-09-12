@@ -6,31 +6,43 @@ ToolResult, it would leak into every log file for that run too.
 GITHUB_TOKEN is never logged today, but nothing asserted that until this
 test — an invariant nothing enforces is an invariant that decays.
 
-No live GitHub call: httpx.get is mocked, so this needs no real network
-access and no real token — GITHUB_TOKEN is a fake, distinctive value for
-the duration of each test only (pytest's monkeypatch reverts it after).
+No live GitHub call: httpx.MockTransport answers through fetch_ticket's
+_build_client seam, so this needs no network and no real token — the value
+below is fake and distinctive, set for the duration of each test only.
 """
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+import httpx
 
 from tools.fetch_ticket import fetch_ticket
+from tools.http_client import ResilientClient
 
 FAKE_TOKEN = "github_pat_TOTALLY_FAKE_TEST_TOKEN_never_real"
 
 
-def _fake_response(status_code=200, json_body=None):
-    resp = MagicMock()
-    resp.status_code = status_code
-    resp.json.return_value = json_body or {}
-    return resp
+def _call_with_response(response, arguments):
+    """Run fetch_ticket against one canned response, returning (result, requests)."""
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return response
+
+    def build(token):
+        return ResilientClient(
+            "https://api.github.com", token, transport=httpx.MockTransport(handler),
+        )
+
+    with patch("tools.fetch_ticket._build_client", build), patch("tools.http_client.time.sleep"):
+        return fetch_ticket.handler(arguments), seen
 
 
 def test_token_never_appears_in_a_successful_result(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", FAKE_TOKEN)
-    fake_resp = _fake_response(200, {"title": "Fix the thing", "body": "Do the fix"})
+    response = httpx.Response(200, json={"title": "Fix the thing", "body": "Do the fix"})
 
-    with patch("httpx.get", return_value=fake_resp) as mock_get:
-        result = fetch_ticket.handler({"issue_id": 1})
+    result, seen = _call_with_response(response, {"issue_id": 1})
 
     assert result.ok
     # Mirrors agent/runtime.py's own tool_result content-building: a string
@@ -41,16 +53,13 @@ def test_token_never_appears_in_a_successful_result(monkeypatch):
 
     # The token IS sent to GitHub — that's its whole purpose — but only in
     # the Authorization header, which is never what gets logged.
-    _, kwargs = mock_get.call_args
-    assert kwargs["headers"]["Authorization"] == f"Bearer {FAKE_TOKEN}"
+    assert seen[0].headers["authorization"] == f"Bearer {FAKE_TOKEN}"
 
 
 def test_token_never_appears_in_a_failed_result(monkeypatch):
     monkeypatch.setenv("GITHUB_TOKEN", FAKE_TOKEN)
-    fake_resp = _fake_response(404)
 
-    with patch("httpx.get", return_value=fake_resp):
-        result = fetch_ticket.handler({"issue_id": 99999})
+    result, _ = _call_with_response(httpx.Response(404, text="Not Found"), {"issue_id": 99999})
 
     assert not result.ok
     logged_content = (result.error_code or "") + str(result.data or "")

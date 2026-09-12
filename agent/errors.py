@@ -93,12 +93,6 @@ _LEGACY_CLASSES = {
     "path_escapes_workspace": ErrorClass.DENIED,
     "path_denied": ErrorClass.DENIED,
     "auth_symbol_touched": ErrorClass.DENIED,
-    # tools/fetch_ticket.py
-    "missing_issue_id": ErrorClass.VALIDATION,
-    "empty_body": ErrorClass.VALIDATION,
-    "issue_not_found": ErrorClass.NOT_FOUND,
-    "github_token_not_set": ErrorClass.AUTH,
-    "network_error": ErrorClass.UNAVAILABLE,
     # tools/search_kb.py
     "missing_query": ErrorClass.VALIDATION,
     "invalid_filters": ErrorClass.VALIDATION,
