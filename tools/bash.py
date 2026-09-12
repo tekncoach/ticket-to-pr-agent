@@ -1,34 +1,22 @@
 # tools/bash.py
 #
-# Anthropic-defined bash_20250124 client-side tool. Schema-less on the wire
-# (Claude already knows the input shape) — but Anthropic never executes it:
-# this file is exactly the part that makes it actually run something.
+# Anthropic-defined bash_20250124 client-side tool: schema-less on the wire,
+# but Anthropic never executes it — this file is what makes it run.
 #
-# Per Anthropic's own security note for this tool: "apply an allowlist of
-# permitted executables and reject shell operators (&&, |, ;, `, $()) — a
-# blocklist is not sufficient." We also never use shell=True: argv form
-# means shell metacharacters have no special meaning even if one slips
-# through.
+# Three guards, per Anthropic's security note ("an allowlist of permitted
+# executables, reject shell operators; a blocklist is not sufficient"):
 #
-# cwd alone does NOT confine a command to the workspace — an argument can
-# still be an absolute path or a `../` escape regardless of cwd, and this
-# was live-verified to actually happen: given a path from outside the
-# workspace (surfaced via search_kb's results, before that tool stopped
-# exposing it), the agent ran `find /some/path/outside -name ...` and it
-# succeeded. Every argument is now checked with the same
-# agent.workspace_guard.resolve_within_workspace() tools/edit_file.py
-# already used for its own path — one shared implementation, not two that
-# could drift out of sync.
-#
-# One exception to "reject every operator": a plain pipe (`|`) between
-# allowed, read-only executables (e.g. `find ... | wc -l`) isn't actually
-# dangerous, so we build the pipeline ourselves with chained subprocess.Popen
-# calls — never shell=True, so nothing else the model might slip in (&&, ;,
-# backticks) gets shell interpretation either way.
-#
-# Read-only allowlist for now — real policy guards (write gating, arg
-# validation, confirm=true) aren't built yet, so keeping every allowed
-# executable read-only is the cheapest guard available before that exists.
+# 1. Allowlisted, read-only executables only. Read-only because real policy
+#    guards (write gating, arg validation, confirm=true) don't exist yet.
+# 2. Never shell=True. argv form means a metacharacter that slips through
+#    has no special meaning anyway. A plain pipe between allowed executables
+#    (`find ... | wc -l`) is the one operator permitted, built structurally
+#    with chained Popen calls rather than handed to a shell.
+# 3. Every argument resolved against the workspace. cwd alone confines
+#    nothing — an absolute path or `../` escapes it regardless, live-verified:
+#    the agent once ran `find /some/path/outside` successfully. Uses the same
+#    agent.workspace_guard.resolve_within_workspace() as tools/edit_file.py,
+#    one implementation so the two can't drift.
 from __future__ import annotations
 
 import shlex
@@ -90,12 +78,9 @@ def _handler(arguments: dict) -> ToolResult:
         if stage[0] not in ALLOWED_EXECUTABLES:
             return ToolResult(ok=False, error_code=f"executable_not_allowed: {stage[0]}")
         for arg in stage[1:]:
-            # Every argument, not just ones that "look like" a path — a
-            # flag or a grep pattern resolves harmlessly inside the
-            # workspace (e.g. "-la", "apple|banana"); only a genuine
-            # escape (an absolute path, ".." past the root) ever fails
-            # this check, so there is no need to first guess which
-            # arguments are paths.
+            # Every argument, not just path-looking ones: a flag or pattern
+            # ("-la", "apple|banana") resolves harmlessly inside the
+            # workspace, so there is no need to guess which args are paths.
             if resolve_within_workspace(WORKSPACE, arg) is None:
                 return ToolResult(ok=False, error_code=f"argument_escapes_workspace: {arg}")
 

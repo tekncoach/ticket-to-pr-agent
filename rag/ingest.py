@@ -1,12 +1,10 @@
 # rag/ingest.py
 #
-# Chunking splits on the document's existing headings first, then windows
-# any oversized section — never fixed-size chunking as the first pass.
-# Structure the author already put in the document is free retrieval
-# metadata, and it makes each citation point at something a human can go
-# and find. A sibling chunker for video transcripts (splitting on chapters
-# from METADATA.md when present, same principle applied to a different
-# kind of structure) is a follow-up, not built here.
+# Chunking splits on the document's existing headings first, windowing only
+# oversized sections — never fixed-size chunking as the first pass. Structure
+# the author already put there is free retrieval metadata, and it makes each
+# citation point at something a human can find. A sibling chunker for video
+# transcripts (splitting on chapters) is a follow-up, not built here.
 from __future__ import annotations
 
 import os

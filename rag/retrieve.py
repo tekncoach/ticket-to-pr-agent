@@ -1,12 +1,10 @@
 # rag/retrieve.py
 #
-# Hybrid: BM25 (FTS5, lexical — exact terms, identifiers, rare words) fused
-# with dense vector (semantic — paraphrase, synonymy) via Reciprocal Rank
-# Fusion. RRF is picked over trying to normalize and add the two raw scores
-# because they live on incomparable scales (a cosine-ish similarity vs a
-# BM25 log-odds score) — RRF only needs each list's *rank order*, not its
-# score magnitude, which is exactly why it's the standard way to combine
-# a lexical and a semantic leg without inventing a weighting scheme.
+# Hybrid: BM25 (FTS5 — exact terms, identifiers, rare words) fused with
+# dense vector (paraphrase, synonymy) via Reciprocal Rank Fusion. RRF rather
+# than normalizing and adding the raw scores, which live on incomparable
+# scales (cosine-ish similarity vs BM25 log-odds): RRF needs only each
+# list's rank order, so no weighting scheme has to be invented.
 from __future__ import annotations
 
 import logging
@@ -25,13 +23,10 @@ _RRF_K = 60  # standard RRF constant; not tuned against a real smoke set yet
 _FTS5_TOKEN_RE = re.compile(r"[A-Za-z0-9_]+")
 
 # Retrieval-quality logging: which leg contributed which candidates, and
-# whether BM25 or dense found the eventual top hit — enough to debug "why
-# did retrieval miss this doc" without re-running the query by hand.
-# Standard library logging, not a
-# new file format or a coupling to agent/event_sink.py's run-scoped
-# trace — search_kb() is called from the CLI and tests too, not just a
-# tool call inside a run. Enable with logging.getLogger("rag.retrieve")
-# at DEBUG to see the per-result leg breakdown for every query.
+# whether BM25 or dense found the top hit — enough to debug "why did
+# retrieval miss this doc" without re-running the query by hand. Stdlib
+# logging, not agent/event_sink.py's run-scoped trace: search_kb() is called
+# from the CLI and tests too. Enable at DEBUG on "rag.retrieve".
 _logger = logging.getLogger(__name__)
 
 

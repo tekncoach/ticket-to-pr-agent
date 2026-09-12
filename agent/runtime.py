@@ -10,21 +10,17 @@ import jsonschema
 
 from agent.event_sink import EventSink, JSONLFileSink
 
-# $/MTok, (input, output). Cached prices — verify against
-# platform.claude.com/docs before trusting if this file is more than a
-# few months old. Unknown models return cost_usd=None rather than a
-# guessed number.
+# $/MTok, (input, output). Cached prices — re-check against
+# platform.claude.com/docs. Unknown models return cost_usd=None, never a guess.
 MODEL_PRICES_PER_MTOK = {
     "claude-haiku-4-5": (1.00, 5.00),
     "claude-sonnet-5": (2.00, 10.00),
     "claude-opus-5": (5.00, 25.00),
 }
 
-# The `thinking` param has two mutually exclusive shapes, and sending the
-# wrong one is a 400: models in this set take {"type": "adaptive"} and
-# reject budget_tokens outright; every other model (Haiku 4.5 included —
-# our default) needs {"type": "enabled", "budget_tokens": N} explicitly,
-# since thinking isn't on by default for it the way it is for these.
+# Two mutually exclusive shapes, and the wrong one is a 400: these models
+# take {"type": "adaptive"} and reject budget_tokens; every other model
+# (Haiku 4.5, our default) needs {"type": "enabled", "budget_tokens": N}.
 ADAPTIVE_THINKING_MODELS = {"claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-fable-5-1"}
 
 
@@ -52,11 +48,9 @@ class Tool:
     description: str = ""
     input_schema: dict | None = None  # None for Anthropic-defined tools — see anthropic_type
     side_effect: bool = False
-    # Set only for Anthropic-defined client-side tools (e.g. "bash_20250124",
-    # "text_editor_20250728"): those are schema-less on the wire — Claude
-    # already knows their input shape, we never send input_schema for them.
-    # We still write and run the handler ourselves; Anthropic never executes
-    # anything server-side for these two.
+    # Set only for Anthropic-defined client-side tools ("bash_20250124",
+    # "text_editor_20250728"): schema-less on the wire, so we never send
+    # input_schema. We still run the handler; Anthropic executes nothing.
     anthropic_type: str | None = None
 
 @dataclass
@@ -67,39 +61,29 @@ class AgentRuntime:
     max_turns: int = 8
     max_tokens: int = 1024
     allow_side_effects: bool = False
-    # Policy guard, not a performance feature: caps how many tool_use blocks
-    # in a single turn actually get executed. Calls beyond the cap still get
-    # a tool_result (every tool_use needs one), just an error one — Claude's
-    # own guidance warns that dropping a tool_result silently trains it to
-    # stop using parallel calls at all.
+    # Policy guard, not performance: caps executed tool_use blocks per turn.
+    # Calls past the cap still get a tool_result, just an error one —
+    # dropping one trains Claude to stop using parallel calls at all.
     max_parallel_tool_calls: int = 3
-    # Prepared, off by default: flip thinking_enabled to turn it on. The
-    # param shape (adaptive vs. budget_tokens) is picked automatically from
-    # self.model at call time — see ADAPTIVE_THINKING_MODELS and
-    # _thinking_param(). thinking_budget_tokens only matters on the
-    # budget_tokens path (Haiku-style models); adaptive models ignore it.
+    # Off by default. The param shape is picked from self.model at call time
+    # (see _thinking_param); the budget only applies on the non-adaptive path.
     thinking_enabled: bool = False
     thinking_budget_tokens: int = 2048
-    # Where each trace event goes. Default: JSONL file per run under
-    # SESSIONS_DIR. Swap for NullSink in tests (no file writes), StdoutSink
-    # for live output, or MultiSink(JSONLFileSink(), StdoutSink()) for both —
-    # see agent/event_sink.py.
+    # Where each trace event goes; a JSONL file per run under SESSIONS_DIR.
+    # Swap for NullSink / StdoutSink / MultiSink — see agent/event_sink.py.
     logger: EventSink = field(default_factory=JSONLFileSink)
 
     def __post_init__(self) -> None:
-        # Built once per AgentRuntime instance, not once per call — the SDK
-        # client holds a connection pool, no reason to recreate it per turn.
+        # Built once per instance: the SDK client holds a connection pool.
         api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError("LLM_API_KEY (or ANTHROPIC_API_KEY) is not set.")
         self._client = anthropic.Anthropic(api_key=api_key)
 
         if self.thinking_enabled and self.model not in ADAPTIVE_THINKING_MODELS:
-            # Anthropic's own constraints on this path: budget_tokens >= 1024
-            # and strictly less than max_tokens (room must remain for the
-            # actual answer after thinking). Fail here, at construction,
-            # with a message that says what to change — not as a 400 from
-            # the API three turns into a run.
+            # Anthropic's constraints here: budget >= 1024 and strictly below
+            # max_tokens (room must remain for the answer). Fail at
+            # construction, not as a 400 three turns into a run.
             if self.thinking_budget_tokens < 1024:
                 raise RuntimeError("thinking_budget_tokens must be >= 1024.")
             if self.thinking_budget_tokens >= self.max_tokens:
@@ -109,20 +93,16 @@ class AgentRuntime:
                 )
 
     def run(self, user_msg: str) -> dict:
-        # Anthropic takes the system prompt as its own messages.create(system=...)
-        # kwarg, not as a {"role": "system"} entry in the messages list — that
-        # role is invalid there. self.system is passed straight through in _llm.
+        # The system prompt goes to messages.create(system=...), not into the
+        # messages list — that role is invalid there. Passed through in _llm.
         messages: list[dict] = [
             {"role": "user", "content": user_msg},
         ]
         trace = []
         run_id = uuid.uuid4().hex[:12]
 
-        # Separate stream from emit()/trace: the full conversation content
-        # (what was asked, what the model said or thought, what a tool
-        # returned) rather than the structured metrics above. See
-        # agent/event_sink.py's EventSink docstring for why these are two
-        # files, not one.
+        # A separate stream from emit()/trace: conversation content rather
+        # than structured metrics. Why two files: agent/event_sink.py.
         def emit_message(role: str, content: Any, turn: int) -> None:
             self.logger.emit_message(run_id, {
                 "run_id": run_id, "ts": _now_iso(), "turn": turn,
@@ -132,39 +112,27 @@ class AgentRuntime:
         emit_message("user", user_msg, turn=0)
 
         def emit(event: dict) -> None:
-            # Single point of truth: every event is recorded in-memory AND
-            # sent to self.logger immediately, never buffered until run()
-            # returns. If self._llm() raises (no try/except around it
-            # today — a real gap, e.g. a network timeout or 5xx mid-run)
-            # the whole process dies right there; buffering until the end
-            # would lose every event from a run that had otherwise been
-            # working. JSONLFileSink's immediate flush + fsync survives
-            # that, and a `kill -9` or power loss too.
+            # Every event is recorded in-memory AND flushed to self.logger
+            # immediately, never buffered until run() returns —
+            # JSONLFileSink's flush + fsync survives a crash mid-run, a
+            # `kill -9`, or power loss.
             trace.append(event)
             self.logger.emit(run_id, event)
 
-        # A repeated identical tool call is a spin, not progress. The loop has no memory of its own otherwise — this
-        # set is that memory, scoped to this run only. Known future
-        # exception, not yet needed: a legitimate polling tool (get_ci_status)
-        # would want to call itself again with the same args; not built yet,
-        # so not solved yet.
+        # A repeated identical tool call is a spin, not progress; this set is
+        # the loop's only memory of that, scoped to this run. A legitimate
+        # polling tool (get_ci_status) would need an exception — not built.
         seen_calls: set[tuple[str, str]] = set()
         for turn in range(self.max_turns):
             t0 = time.time()
             try:
                 resp = self._llm(messages, tools=self._anthropic_tools())
             except anthropic.APIError as exc:
-                # Covers APIConnectionError (network/timeout), APIStatusError
-                # and its subclasses (RateLimitError, InternalServerError —
-                # i.e. network timeouts and 5xx) — anything the SDK itself
-                # classifies as an API-layer failure.
-                # Deliberately NOT a bare `except Exception`: a real bug in
-                # our own code (e.g. a KeyError in _anthropic_tools) should
-                # still crash loudly, not be absorbed into "the LLM failed."
-                # No retry/backoff here yet — that is a separate concern
-                # (error handling and retries as a policy layer); this is the
-                # minimum so a transient failure is a bounded, reported
-                # outcome instead of an uncaught exception with no final event.
+                # Anything the SDK classifies as an API-layer failure
+                # (network, timeout, 429, 5xx). Deliberately not a bare
+                # `except Exception`: a bug of ours must still crash loudly,
+                # not be laundered into "the LLM failed". No retry/backoff
+                # yet — this is the minimum for a bounded, reported outcome.
                 emit({
                     "event": "llm_call_error", "run_id": run_id, "ts": _now_iso(),
                     "turn": turn, "error_type": type(exc).__name__, "error": str(exc),
@@ -187,36 +155,30 @@ class AgentRuntime:
                 "model_resolved": resp.model,    # the actual pinned snapshot Anthropic used
                 "input_tokens": usage.input_tokens,
                 "output_tokens": usage.output_tokens,
-                # Included WITHIN output_tokens, not additive — a breakdown for
-                # observability, not a separate cost line. Always None today:
-                # we never request thinking (Haiku 4.5 needs it enabled
-                # explicitly, unlike newer models where it's the default).
+                # Within output_tokens, not additive — a breakdown, not a cost
+                # line. Always None today: we never request thinking.
                 "thinking_tokens": (usage.output_tokens_details.thinking_tokens
                                     if usage.output_tokens_details else None),
-                # Always 0 today — no cache_control breakpoints anywhere yet,
-                # despite the system prompt + tool schemas being identical
-                # every turn of a run: a real, unexploited caching win.
+                # Always 0 today — no cache_control breakpoints yet, despite
+                # the prompt + tool schemas repeating every turn: a real,
+                # unexploited caching win.
                 "cache_creation_input_tokens": usage.cache_creation_input_tokens,
                 "cache_read_input_tokens": usage.cache_read_input_tokens,
                 "service_tier": usage.service_tier,
                 "cost_usd": _cost_usd(self.model, usage.input_tokens, usage.output_tokens),
                 "stop_reason": resp.stop_reason,
-                # Only ever non-null when stop_reason == "refusal" — without
-                # logging it, a refusal would pass through as an unremarkable
-                # final answer with no record of why.
+                # Non-null only when stop_reason == "refusal" — unlogged, a
+                # refusal reads as an unremarkable final answer.
                 "stop_details": resp.stop_details.model_dump() if resp.stop_details else None,
             })
 
-            # Echo the assistant's own turn back into the history verbatim —
-            # without this, messages never grows and the model has amnesia
-            # every turn. resp.content is already the right shape (a list of
-            # block objects); the SDK accepts it straight back on the next call.
+            # Echo the assistant's turn back verbatim, or messages never grows
+            # and the model has amnesia. resp.content is already the right
+            # shape; the SDK accepts it straight back on the next call.
             messages.append({"role": "assistant", "content": resp.content})
-            # resp.content is a list of SDK pydantic block objects (TextBlock,
-            # ToolUseBlock, and — when thinking_enabled — ThinkingBlock,
-            # which is where the model's reasoning actually lives, not just
-            # its final text). model_dump() is what makes any of that
-            # JSON-serializable for the messages.jsonl file.
+            # SDK pydantic blocks (Text, ToolUse, and ThinkingBlock when
+            # enabled — where the reasoning lives, not just the final text).
+            # model_dump() is what makes them JSON-serializable.
             emit_message("assistant", [b.model_dump() for b in resp.content], turn=turn)
 
             if resp.stop_reason != "tool_use":
@@ -227,10 +189,9 @@ class AgentRuntime:
                 emit({"event": "final", "run_id": run_id, "ts": _now_iso(), "turn": turn})
                 return {"run_id": run_id, "answer": final_text, "trace": trace}
 
-            # stop_reason == "tool_use": one turn can ask for several tools at
-            # once. Every tool_use block needs exactly one tool_result block
-            # back, and ALL of them travel together in a single user message —
-            # not one message per result.
+            # One turn can ask for several tools. Every tool_use block needs
+            # exactly one tool_result back, and they all travel together in a
+            # single user message — not one message per result.
             tool_use_blocks = [b for b in resp.content if b.type == "tool_use"]
             tool_results = []
             for i, block in enumerate(tool_use_blocks):
@@ -241,10 +202,9 @@ class AgentRuntime:
 
                 signature = (block.name, json.dumps(block.input, sort_keys=True))
                 if signature in seen_calls:
-                    # Hard stop, not another error tool_result: an error result
-                    # gives the model a chance to try again, which is exactly
-                    # the spin we're stopping — it already got this identical
-                    # call's outcome once, sending it back changes nothing.
+                    # Hard stop, not another error tool_result: an error
+                    # invites a retry, which is the spin we're stopping — the
+                    # model already has this identical call's outcome.
                     emit({
                         "event": "duplicate_call_stop", "run_id": run_id, "ts": _now_iso(),
                         "turn": turn, "tool": block.name,
@@ -262,10 +222,8 @@ class AgentRuntime:
                 seen_calls.add(signature)
 
                 if i >= self.max_parallel_tool_calls:
-                    # Still executed sequentially today (see docs/SDLC-schema.md
-                    # for why we haven't parallelized read-only calls yet) — this
-                    # cap exists so a single turn can't trigger an unbounded
-                    # number of side effects/subprocess spawns/API calls, not to
+                    # Executed sequentially today (docs/SDLC-schema.md says
+                    # why): the cap bounds side effects per turn, it does not
                     # manage concurrency that doesn't exist yet.
                     result = ToolResult(ok=False, error_code="too_many_parallel_calls")
                 else:
@@ -308,10 +266,9 @@ class AgentRuntime:
 
     @staticmethod
     def _validate_args(tool: Tool, args: dict) -> str | None:
-        # Only our own custom tools declare input_schema — Anthropic-defined
-        # tools (anthropic_type set) are schema-less on the wire, so there is
-        # no schema of ours to check them against; their handlers already do
-        # their own minimal checks (missing_path, empty_command, ...).
+        # Only our own tools declare input_schema — Anthropic-defined ones are
+        # schema-less on the wire, and their handlers do their own minimal
+        # checks (missing_path, empty_command, ...).
         if tool.input_schema is None:
             return None
         try:
@@ -341,9 +298,8 @@ class AgentRuntime:
         return self._client.messages.create(**kwargs)
 
     def _anthropic_tools(self) -> list[dict]:
-        # Anthropic-defined client-side tools (bash, text_editor, memory) are
-        # declared by type+name only — passing input_schema for one of these
-        # is rejected. Everything else is our own custom tool: flat
+        # Anthropic-defined tools are declared by type+name only — passing
+        # input_schema for one is rejected. Ours: flat
         # name/description/input_schema, no "type": "function" wrapper.
         schemas = []
         for t in self.tools.values():

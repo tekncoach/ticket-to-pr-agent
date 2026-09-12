@@ -1,29 +1,23 @@
 # tools/edit_file.py
 #
-# Anthropic-defined text_editor_20250728 client-side tool. Schema-less on
-# the wire, same as bash — Claude already knows the input shape. This is
-# the first write-classified tool: side_effect=True, so it's rejected
-# unless AgentRuntime.allow_side_effects is True (agent/runtime.py's
-# write gate, wired but dormant until this tool existed).
+# Anthropic-defined text_editor_20250728 client-side tool, schema-less on
+# the wire like bash. The only write-classified tool: side_effect=True, so
+# it's rejected unless AgentRuntime.allow_side_effects is True.
 #
-# Two independent safety layers, per Anthropic's own security note for
-# this tool ("path is untrusted model output — confine every operation to
-# a fixed project root"):
-#   1. every path is resolved to its canonical form and checked against
-#      WORKSPACE — rejects .., symlinks, absolute paths that escape it.
-#   2. a denylist rejects specific paths even inside the workspace,
-#      matching SPEC.md's Out of scope section.
+# Three safety layers, the first two per Anthropic's security note ("path is
+# untrusted model output — confine every operation to a fixed project root"):
 #
-# The denylist works at the path level, so it fully covers crypto.py and
-# migrations/ (whole files/dirs) — but "no auth changes" couldn't be, since
-# auth logic lives inside app.py, shared with plenty of non-auth code, and
-# there's no dedicated auth file to deny. A path denylist cannot isolate a
-# section within a file. Named as a gap in review, then closed here rather
-# than left as a documented limitation: _touches_auth_symbol() below scans
-# whatever text a write would actually add or remove for one of
-# agent.config.AUTH_SENSITIVE_SYMBOLS, independent of which file it's in —
-# the same "enforce in code, not just describe the boundary" pattern as
-# bash's workspace confinement.
+# 1. Every path resolved to canonical form and checked against WORKSPACE —
+#    rejects .., symlinks, absolute paths that escape it.
+# 2. A denylist rejecting specific paths inside the workspace, matching
+#    SPEC.md's Out of scope section.
+# 3. _touches_auth_symbol() scans the text a write would add or remove for
+#    an agent.config.AUTH_SENSITIVE_SYMBOLS name. A path denylist covers
+#    whole files (crypto.py, migrations/) but cannot isolate a section
+#    within one, and auth logic lives inside app.py among unrelated code —
+#    so "no auth changes" needed a mechanism that ignores which file it's
+#    in. Same "enforce in code, don't just describe the boundary" pattern
+#    as bash's workspace confinement.
 from __future__ import annotations
 
 import re
