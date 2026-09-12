@@ -36,11 +36,11 @@ def test_only_transient_classes_are_retryable():
 
 
 def test_a_policy_refusal_is_never_retryable():
-    # DENIED covers path_denied, auth_symbol_touched, shell_operator_rejected.
+    # DENIED covers every guard in bash, edit_file and the dispatch loop.
     # Retrying a refusal is how a guard gets worn down into a suggestion.
-    assert not is_retryable("denied: crypto.py")
-    assert not is_retryable("path_denied")
-    assert not is_retryable("auth_symbol_touched: get_session_user")
+    assert not is_retryable("denied: path is out of scope: crypto.py")
+    assert not is_retryable("denied: auth symbol touched: get_session_user")
+    assert not is_retryable("denied: shell operator rejected")
 
 
 def test_unknown_code_is_internal_and_not_retryable():
@@ -51,28 +51,6 @@ def test_unknown_code_is_internal_and_not_retryable():
 def test_missing_code_is_internal():
     assert classify(None) == ErrorClass.INTERNAL
     assert classify("") == ErrorClass.INTERNAL
-
-
-@pytest.mark.parametrize("code, expected", [
-    ("embedding_service_unavailable: 503", ErrorClass.UNAVAILABLE),
-    ("string_not_found", ErrorClass.NOT_FOUND),
-    ("ambiguous_match", ErrorClass.VALIDATION),
-    ("invalid_args: 'query' is a required property", ErrorClass.VALIDATION),
-    ("side_effect_not_allowed", ErrorClass.DENIED),
-    ("handler_error: KeyError", ErrorClass.INTERNAL),
-])
-def test_legacy_tool_codes_still_classify(code, expected):
-    # The tools have not migrated yet; retryability has to work on their
-    # current codes in the meantime, detail suffix and all.
-    assert classify(code) == expected
-
-
-def test_bash_exit_code_stays_unclassified_and_safe():
-    # Deliberately unmapped — a non-zero exit from a read-only command is
-    # usually a normal negative result (grep matched nothing), and asserting
-    # a class for it would decide something we have not decided.
-    assert classify("exit_1") == ErrorClass.INTERNAL
-    assert not is_retryable("exit_1")
 
 
 def test_tool_error_string_round_trips_through_classify():

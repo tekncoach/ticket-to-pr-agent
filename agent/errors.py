@@ -6,11 +6,9 @@
 # question the retry and recovery logic actually needs: is this worth trying
 # again? ErrorClass answers it once, for all of them.
 #
-# The wire format stays a string, "<class>: <detail>", so ToolResult.error_code
-# does not change shape — what changes is that the part before the colon now
-# comes from a closed set. Local tools still emit their own legacy codes;
-# classify() maps those too, so retryability works today and each tool
-# migrates when it is next touched rather than in one repo-wide refactor.
+# The wire format is a string, "<class>: <detail>", so ToolResult.error_code
+# keeps its shape — what changed is that the part before the colon comes from
+# a closed set. Every tool emits it; nothing needs a translation table.
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -71,60 +69,20 @@ def from_status(status_code: int) -> ErrorClass:
     return ErrorClass.INTERNAL
 
 
-# Legacy per-tool codes, mapped so retryability works before the tools
-# themselves migrate. Matched on the part before ":" — every code that carries
-# detail spells it "code: detail".
-_LEGACY_CLASSES = {
-    # tools/bash.py
-    "empty_command": ErrorClass.VALIDATION,
-    "parse_error": ErrorClass.VALIDATION,
-    "empty_pipeline_stage": ErrorClass.VALIDATION,
-    "too_many_pipeline_stages": ErrorClass.VALIDATION,
-    "shell_operator_rejected": ErrorClass.DENIED,
-    "executable_not_allowed": ErrorClass.DENIED,
-    "argument_escapes_workspace": ErrorClass.DENIED,
-    # tools/edit_file.py
-    "missing_path": ErrorClass.VALIDATION,
-    "invalid_insert_line": ErrorClass.VALIDATION,
-    "unknown_command": ErrorClass.VALIDATION,
-    "ambiguous_match": ErrorClass.VALIDATION,
-    "string_not_found": ErrorClass.NOT_FOUND,
-    "not_found": ErrorClass.NOT_FOUND,
-    "path_escapes_workspace": ErrorClass.DENIED,
-    "path_denied": ErrorClass.DENIED,
-    "auth_symbol_touched": ErrorClass.DENIED,
-    # tools/search_kb.py
-    "missing_query": ErrorClass.VALIDATION,
-    "invalid_filters": ErrorClass.VALIDATION,
-    "embedding_service_unavailable": ErrorClass.UNAVAILABLE,
-    # agent/runtime.py's dispatch loop
-    "unknown_tool": ErrorClass.VALIDATION,
-    "invalid_args": ErrorClass.VALIDATION,
-    "side_effect_not_allowed": ErrorClass.DENIED,
-    "too_many_parallel_calls": ErrorClass.DENIED,
-    "handler_error": ErrorClass.INTERNAL,
-}
-
-# Deliberately unmapped: bash's "exit_<n>". A non-zero exit from an
-# allowlisted read-only command is usually a normal negative result (grep
-# matched nothing), not a failure of the tool — classifying it either way
-# would assert something we have not decided. It falls to INTERNAL, which is
-# not retryable, so the safe outcome holds until we decide.
-
-
 def classify(error_code: str | None) -> ErrorClass:
-    """The class of a ToolResult.error_code, new-style or legacy.
+    """The class of a ToolResult.error_code.
 
     An unrecognised code is INTERNAL, and therefore never retryable: a code
     nobody has classified must not silently become one the agent retries.
+    That is the safe default for a tool added later whose author forgets this
+    file exists.
     """
     if not error_code:
         return ErrorClass.INTERNAL
-    head = error_code.split(":", 1)[0].strip()
     try:
-        return ErrorClass(head)
+        return ErrorClass(error_code.split(":", 1)[0].strip())
     except ValueError:
-        return _LEGACY_CLASSES.get(head, ErrorClass.INTERNAL)
+        return ErrorClass.INTERNAL
 
 
 def is_retryable(error_code: str | None) -> bool:
