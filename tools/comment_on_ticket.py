@@ -18,7 +18,8 @@
 #      when GitHub renders it. That makes the posted comment itself the record
 #      of what was posted — no local state to keep in sync with the remote.
 #   2. Every attempt reads the issue's comments first and stops if the key is
-#      already there.
+#      already there — and a read that fails is "unknown", never "absent".
+#      Collapsing those two is what lets a flaky read produce duplicates.
 #   3. The retry loop wraps the whole read-then-write cycle, not the POST. The
 #      transport is told NOT to retry (no key passed to it), so the POST is
 #      sent at most once per cycle.
@@ -66,16 +67,22 @@ def _shadow_mode() -> bool:
     return os.environ.get("SHADOW_MODE", "true").lower() == "true"
 
 
-def _find_marked_comment(client: ResilientClient, issue_id: int, key: str) -> dict | None:
-    """The comment already carrying this key, or None. A failed read returns
-    None: it means "unknown", and the caller treats that as not-yet-posted."""
+def _find_marked_comment(
+    client: ResilientClient, issue_id: int, key: str,
+) -> tuple[dict | None, bool]:
+    """(the comment carrying this key or None, whether the read succeeded).
+
+    The second value is not a detail. "No marker found" and "could not look"
+    are different answers, and collapsing them into None is what lets a flaky
+    read turn into a duplicate comment.
+    """
     result = client.request(
         "GET", f"/repos/{REPO}/issues/{issue_id}/comments",
         headers=GITHUB_HEADERS, params={"per_page": COMMENTS_PER_PAGE},
     )
     if not result.ok or not isinstance(result.data, list):
-        return None
-    return next((c for c in result.data if _marker(key) in (c.get("body") or "")), None)
+        return None, False
+    return next((c for c in result.data if _marker(key) in (c.get("body") or "")), None), True
 
 
 def _handler(arguments: dict) -> ToolResult:
@@ -105,9 +112,10 @@ def _handler(arguments: dict) -> ToolResult:
     dry_run = bool(arguments.get("dry_run")) or _shadow_mode()
 
     error = ToolError(ErrorClass.INTERNAL, "no attempt was made")
+    posted_once = False
     with _build_client(token) as client:
         for cycle in range(MAX_CYCLES):
-            existing = _find_marked_comment(client, issue_id, key)
+            existing, read_ok = _find_marked_comment(client, issue_id, key)
             if existing is not None:
                 return ToolResult(ok=True, data=(
                     f"already commented on {target} "
@@ -120,9 +128,22 @@ def _handler(arguments: dict) -> ToolResult:
                     f"would comment on {target} ({reason}, nothing posted): {body}"
                 ))
 
+            # Only write on positive knowledge that no marker is there. Once a
+            # POST has been sent, a read we could not complete means "unknown",
+            # and unknown must not become "post it again" — the previous one may
+            # have landed and lost its response. Stopping here can leave the
+            # comment unconfirmed; posting again duplicates it for certain.
+            if posted_once and not read_ok:
+                return ToolResult(ok=False, error_code=str(ToolError(
+                    ErrorClass.UNAVAILABLE,
+                    f"a comment was sent to {target} but could not be confirmed; "
+                    "not reposting, check the issue",
+                )))
+
             # No idempotency_key passed on purpose: GitHub ignores the header,
             # so a transport retry here would repost. This cycle's read is the
             # real guard, and it runs again on the next pass.
+            posted_once = True
             result = client.request(
                 "POST", f"/repos/{REPO}/issues/{issue_id}/comments",
                 headers=GITHUB_HEADERS, json={"body": marked_body},

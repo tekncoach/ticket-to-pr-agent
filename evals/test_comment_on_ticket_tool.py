@@ -191,3 +191,48 @@ def test_absent_token_is_an_auth_error(monkeypatch):
 
 def test_it_is_declared_as_a_write_so_the_runtime_gate_sees_it():
     assert comment_on_ticket.side_effect is True
+
+
+def test_an_unreadable_issue_never_leads_to_a_second_post():
+    # Found by the chaos checks, not by review: with every read failing and
+    # every write landing-then-losing-its-response, the tool posted three
+    # comments. "Could not look" was being read as "nothing is there".
+    posted = []
+    request = httpx.Request("GET", "https://api.github.com/x")
+
+    def flaky(req):
+        if req.method == "GET":
+            raise httpx.ConnectError("reset", request=request)
+        posted.append(json.loads(req.content)["body"])
+        raise httpx.ConnectTimeout("response lost", request=request)
+
+    issue = FakeIssue()
+    issue.handler = flaky
+    result = _call(issue, {"issue_id": 42, "body": "CI is green."})
+
+    assert len(posted) == 1, "unknown must never become post-it-again"
+    assert not result.ok
+    assert "could not be confirmed" in result.error_code
+    assert "not reposting" in result.error_code
+
+
+def test_a_first_read_failure_still_allows_the_first_post():
+    # The other direction: before anything has been sent there is nothing to
+    # duplicate, so an unreadable issue must not block the comment entirely.
+    state = {"reads": 0}
+    issue = FakeIssue()
+    real = issue.handler
+    request = httpx.Request("GET", "https://api.github.com/x")
+
+    def first_read_fails(req):
+        if req.method == "GET":
+            state["reads"] += 1
+            if state["reads"] == 1:
+                raise httpx.ConnectError("reset", request=request)
+        return real(req)
+
+    issue.handler = first_read_fails
+    result = _call(issue, {"issue_id": 42, "body": "CI is green."})
+    assert result.ok
+    assert result.data.startswith("commented on ")
+    assert len(issue.comments) == 1
