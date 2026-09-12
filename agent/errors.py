@@ -87,3 +87,34 @@ def classify(error_code: str | None) -> ErrorClass:
 
 def is_retryable(error_code: str | None) -> bool:
     return classify(error_code) in RETRYABLE
+
+
+# What a human should do about each class, written for the person reading the
+# agent's final answer rather than for the log. A run that ends in failure ends
+# with one of these; a bare error code is not something anyone can act on, and
+# turning a failure into a sentence someone can act on is most of the value the
+# agent has left once it cannot finish the job.
+_NEXT_STEPS = {
+    ErrorClass.AUTH: (
+        "the credentials need renewing or their permissions widening — "
+        "I cannot work around this"
+    ),
+    ErrorClass.DENIED: (
+        "this is blocked on purpose, so a human has to decide whether the "
+        "boundary should move"
+    ),
+    ErrorClass.NOT_FOUND: "check the identifier exists and is spelled as expected",
+    ErrorClass.VALIDATION: (
+        "the request is malformed in a way I could not correct on my own; "
+        "it probably needs rephrasing"
+    ),
+    ErrorClass.RATE_LIMIT: "wait for the rate-limit window to reset, then run this ticket again",
+    ErrorClass.UNAVAILABLE: "the service is not responding; run this ticket again once it is back",
+    ErrorClass.TIMEOUT: "the service did not answer in time; run this ticket again once it is healthy",
+    ErrorClass.INTERNAL: "this is a bug in the agent — the run's trace has the detail",
+}
+
+
+def next_step(error_code: str | None) -> str:
+    """The suggested next step for whoever reads the agent's final answer."""
+    return _NEXT_STEPS[classify(error_code)]

@@ -101,8 +101,44 @@ That can leave a comment unconfirmed. Posting again duplicates it for certain �
 
 Both directions are frozen as regression tests in `evals/test_comment_on_ticket_tool.py`.
 
+## Conversation-level recovery
+
+Three ways a run stops before `MAX_TURNS`, each ending in a sentence rather than a code.
+
+**An identical tool call, repeated.** Already there before today: same tool, same arguments, so the outcome is already known. Hard stop.
+
+**An `auth` failure, on the first occurrence.** No other tool is tried. An auth failure is neither transient nor something the agent can route around, so handing it back to the model only buys creative workarounds for a problem a human fixes in a minute — if they are told about it:
+
+```
+Stopping: fetch_ticket could not authenticate (auth: HTTP 401). I did not try
+anything else — the credentials need renewing or their permissions widening,
+I cannot work around this.
+```
+
+**Two consecutive failures of the same tool.** Consecutive and per tool, both deliberate: an agent that fails, corrects its arguments and succeeds is doing exactly what it should, and a threshold that counted total failures would cut off the self-correction it exists to encourage. A success resets the streak.
+
+```
+Stopping: comment_on_ticket failed 2 times in a row, last with
+rate_limit: HTTP 429 after 4 attempts. Trying again is not making progress —
+wait for the rate-limit window to reset, then run this ticket again.
+```
+
+The suggested next step comes from the error class (`agent/errors.py`, `next_step()`), so every class has one and none is improvised. The typed code stays in the sentence: the person reading it may be the one grepping the logs.
+
+## The LLM call
+
+Corrected after checking rather than assuming: **the Anthropic SDK already retries 429s and 5xx itself**, twice by default, with backoff, honouring `retry-after`. This project had been relying on that without saying so; `LLM_MAX_RETRIES` now states it in the file that depends on it.
+
+By the time an `anthropic.APIError` reaches our handler those attempts are spent, which is why the handler stops rather than trying again. It classifies the exception onto the same taxonomy and produces the same shape of sentence:
+
+```
+Stopping: the model call failed (rate_limit: RateLimitError), after the SDK's
+own 2 retries — wait for the rate-limit window to reset, then run this ticket
+again.
+```
+
 ## Not done
 
-**No conversation-level recovery yet.** `agent/runtime.py` stops on a repeated identical tool call, but an agent that keeps failing with *different* arguments spins until `MAX_TURNS`. Summarising the failure and proposing a next step after two attempts is the next piece.
+**The agent is not told to degrade gracefully in its own words.** Everything above is the runtime speaking when it gives up. When a tool fails once and the agent keeps going, what the user sees is whatever the model chooses to say about it, and `SYSTEM_PROMPT` gives it no guidance on that.
 
-**No retry on the LLM call itself.** `AgentRuntime.run()` catches `anthropic.APIError` and returns a bounded `llm_call_failed` rather than crashing, but does not back off and try again — a transient failure there ends the run.
+**Nothing resumes.** A run that stops for any of the reasons above starts from scratch when re-run. Work already done — an edit made, a comment posted — is re-derived rather than picked up.

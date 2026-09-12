@@ -8,7 +8,7 @@ import json, os, time, uuid
 import anthropic
 import jsonschema
 
-from agent.errors import ErrorClass, ToolError
+from agent.errors import ErrorClass, ToolError, classify, next_step
 from agent.event_sink import EventSink, JSONLFileSink
 
 # $/MTok, (input, output). Cached prices — re-check against
@@ -23,6 +23,25 @@ MODEL_PRICES_PER_MTOK = {
 # take {"type": "adaptive"} and reject budget_tokens; every other model
 # (Haiku 4.5, our default) needs {"type": "enabled", "budget_tokens": N}.
 ADAPTIVE_THINKING_MODELS = {"claude-opus-5", "claude-sonnet-5", "claude-fable-5", "claude-fable-5-1"}
+
+# The SDK retries 429s and 5xx itself, with backoff, honouring retry-after.
+# Stated rather than inherited: a retry policy we depend on should be visible
+# in the file that depends on it. By the time an APIError reaches our handler,
+# these attempts are already spent — which is why that handler stops instead of
+# trying again.
+LLM_MAX_RETRIES = 2
+
+
+def _classify_api_error(exc: anthropic.APIError) -> ErrorClass:
+    if isinstance(exc, anthropic.AuthenticationError):
+        return ErrorClass.AUTH
+    if isinstance(exc, anthropic.PermissionDeniedError):
+        return ErrorClass.DENIED
+    if isinstance(exc, anthropic.RateLimitError):
+        return ErrorClass.RATE_LIMIT
+    if isinstance(exc, anthropic.APITimeoutError):
+        return ErrorClass.TIMEOUT
+    return ErrorClass.UNAVAILABLE
 
 
 def _now_iso() -> str:
@@ -66,6 +85,11 @@ class AgentRuntime:
     # Calls past the cap still get a tool_result, just an error one —
     # dropping one trains Claude to stop using parallel calls at all.
     max_parallel_tool_calls: int = 3
+    # How many times in a row one tool may fail before the run stops and
+    # reports instead of trying again. Consecutive, and per tool: a failure the
+    # agent recovers from resets it, so productive self-correction (a rejected
+    # ambiguous edit, re-issued with more context) is not what this catches.
+    max_consecutive_tool_failures: int = 2
     # Off by default. The param shape is picked from self.model at call time
     # (see _thinking_param); the budget only applies on the non-adaptive path.
     thinking_enabled: bool = False
@@ -79,7 +103,7 @@ class AgentRuntime:
         api_key = os.environ.get("LLM_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
         if not api_key:
             raise RuntimeError("LLM_API_KEY (or ANTHROPIC_API_KEY) is not set.")
-        self._client = anthropic.Anthropic(api_key=api_key)
+        self._client = anthropic.Anthropic(api_key=api_key, max_retries=LLM_MAX_RETRIES)
 
         if self.thinking_enabled and self.model not in ADAPTIVE_THINKING_MODELS:
             # Anthropic's constraints here: budget >= 1024 and strictly below
@@ -124,6 +148,19 @@ class AgentRuntime:
         # the loop's only memory of that, scoped to this run. A legitimate
         # polling tool (get_ci_status) would need an exception — not built.
         seen_calls: set[tuple[str, str]] = set()
+        # Consecutive failures per tool, reset by that tool succeeding.
+        failure_streak: dict[str, int] = {}
+
+        def stopped(reason: str, sentence: str, turn: int, **fields: object) -> dict:
+            """End the run with something a human can act on.
+
+            A run that gives up is still answering someone. An error code is a
+            log line, not an answer — the sentence is the deliverable here.
+            """
+            emit({"event": reason, "run_id": run_id, "ts": _now_iso(),
+                  "turn": turn, **fields})
+            return {"run_id": run_id, "error": reason, "answer": sentence, "trace": trace}
+
         for turn in range(self.max_turns):
             t0 = time.time()
             try:
@@ -132,18 +169,22 @@ class AgentRuntime:
                 # Anything the SDK classifies as an API-layer failure
                 # (network, timeout, 429, 5xx). Deliberately not a bare
                 # `except Exception`: a bug of ours must still crash loudly,
-                # not be laundered into "the LLM failed". No retry/backoff
-                # yet — this is the minimum for a bounded, reported outcome.
+                # not be laundered into "the LLM failed". The SDK's own
+                # LLM_MAX_RETRIES attempts are already spent by the time we get
+                # here, so this stops and says so in a sentence.
+                error_code = str(ToolError(_classify_api_error(exc), type(exc).__name__))
                 emit({
                     "event": "llm_call_error", "run_id": run_id, "ts": _now_iso(),
-                    "turn": turn, "error_type": type(exc).__name__, "error": str(exc),
+                    "turn": turn, "error_type": type(exc).__name__,
+                    "error_code": error_code, "error": str(exc),
                 })
                 return {
                     "run_id": run_id,
                     "error": "llm_call_failed",
                     "answer": (
-                        f"Stopping: the model call failed ({type(exc).__name__}). "
-                        "No retry was attempted."
+                        f"Stopping: the model call failed ({error_code}), after the "
+                        f"SDK's own {LLM_MAX_RETRIES} retries — "
+                        f"{next_step(error_code)}."
                     ),
                     "trace": trace,
                 }
@@ -251,6 +292,36 @@ class AgentRuntime:
                     "event": "tool_result", "run_id": run_id, "ts": _now_iso(), "turn": turn,
                     "tool": block.name, "ok": result.ok, "error_code": result.error_code,
                 })
+
+                if result.ok:
+                    failure_streak[block.name] = 0
+                else:
+                    error_class = classify(result.error_code)
+                    # An auth failure stops the run on the first occurrence, and
+                    # no other tool is tried. It is neither transient nor
+                    # something the agent can route around, so handing it back to
+                    # the model only buys creative workarounds for a problem a
+                    # human fixes in a minute — if they are told about it.
+                    if error_class is ErrorClass.AUTH:
+                        return stopped(
+                            "auth_failure",
+                            f"Stopping: {block.name} could not authenticate "
+                            f"({result.error_code}). I did not try anything else — "
+                            f"{next_step(result.error_code)}.",
+                            turn, tool=block.name, error_code=result.error_code,
+                        )
+
+                    streak = failure_streak.get(block.name, 0) + 1
+                    failure_streak[block.name] = streak
+                    if streak >= self.max_consecutive_tool_failures:
+                        return stopped(
+                            "repeated_tool_failure",
+                            f"Stopping: {block.name} failed {streak} times in a row, "
+                            f"last with {result.error_code}. Trying again is not "
+                            f"making progress — {next_step(result.error_code)}.",
+                            turn, tool=block.name, error_code=result.error_code,
+                            failures=streak,
+                        )
 
                 if not result.ok:
                     content = result.error_code or "error"
