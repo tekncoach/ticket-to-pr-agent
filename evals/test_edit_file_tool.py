@@ -9,6 +9,7 @@ path-escape / denylist / ambiguous-match logic regresses? This one.
 """
 from unittest.mock import patch
 
+from agent.errors import ErrorClass, classify, is_retryable
 from tools.edit_file import edit_file
 
 
@@ -27,32 +28,32 @@ def test_view_existing_file(tmp_path):
 def test_path_traversal_rejected(tmp_path):
     result = _call(tmp_path, command="view", path="../../etc/passwd")
     assert not result.ok
-    assert result.error_code == "path_escapes_workspace"
+    assert result.error_code == "denied: path escapes workspace: ../../etc/passwd"
 
 
 def test_absolute_path_outside_workspace_rejected(tmp_path):
     result = _call(tmp_path, command="view", path="/etc/passwd")
     assert not result.ok
-    assert result.error_code == "path_escapes_workspace"
+    assert result.error_code == "denied: path escapes workspace: /etc/passwd"
 
 
 def test_denylist_file_rejected(tmp_path):
     result = _call(tmp_path, command="view", path="crypto.py")
     assert not result.ok
-    assert result.error_code == "path_denied"
+    assert result.error_code == "denied: path is out of scope: crypto.py"
 
 
 def test_denylist_directory_rejected(tmp_path):
     result = _call(tmp_path, command="view", path="migrations/0001_init.sql")
     assert not result.ok
-    assert result.error_code == "path_denied"
+    assert result.error_code == "denied: path is out of scope: migrations/0001_init.sql"
 
 
 def test_str_replace_ambiguous_match_rejected(tmp_path):
     (tmp_path / "a.txt").write_text("foo\nfoo\n")
     result = _call(tmp_path, command="str_replace", path="a.txt", old_str="foo", new_str="bar")
     assert not result.ok
-    assert result.error_code == "ambiguous_match"
+    assert result.error_code == "validation: old_str matches 2 times in a.txt; add surrounding context"
     # The file must be untouched when the match was rejected as ambiguous.
     assert (tmp_path / "a.txt").read_text() == "foo\nfoo\n"
 
@@ -61,7 +62,7 @@ def test_str_replace_string_not_found(tmp_path):
     (tmp_path / "a.txt").write_text("foo\n")
     result = _call(tmp_path, command="str_replace", path="a.txt", old_str="zzz", new_str="bar")
     assert not result.ok
-    assert result.error_code == "string_not_found"
+    assert result.error_code == "not_found: old_str not found in a.txt"
 
 
 def test_str_replace_succeeds_on_unique_match(tmp_path):
@@ -82,7 +83,7 @@ def test_create_backs_up_existing_file(tmp_path):
 def test_view_missing_file_returns_not_found(tmp_path):
     result = _call(tmp_path, command="view", path="nope.txt")
     assert not result.ok
-    assert result.error_code == "not_found"
+    assert result.error_code == "not_found: no such file: nope.txt"
 
 
 def test_insert_at_line_zero(tmp_path):
@@ -112,7 +113,7 @@ def test_str_replace_blocked_when_new_str_adds_an_auth_symbol(tmp_path):
         old_str="pass", new_str="return get_session_user()",
     )
     assert not result.ok
-    assert result.error_code == "auth_symbol_touched: get_session_user"
+    assert result.error_code == "denied: auth symbol touched: get_session_user"
     # Blocked before the write — the file must be untouched.
     assert (tmp_path / "app.py").read_text() == "def handler():\n    pass\n"
 
@@ -125,7 +126,7 @@ def test_str_replace_blocked_when_old_str_removes_an_auth_symbol(tmp_path):
         old_str="if _is_cross_site(req):\n    abort(403)\n", new_str="pass\n",
     )
     assert not result.ok
-    assert result.error_code == "auth_symbol_touched: _is_cross_site"
+    assert result.error_code == "denied: auth symbol touched: _is_cross_site"
 
 
 def test_create_blocked_when_file_text_contains_an_auth_symbol(tmp_path):
@@ -134,7 +135,7 @@ def test_create_blocked_when_file_text_contains_an_auth_symbol(tmp_path):
         command="create", path="app.py", file_text="SESSION_COOKIE = 'x'\n",
     )
     assert not result.ok
-    assert result.error_code == "auth_symbol_touched: SESSION_COOKIE"
+    assert result.error_code == "denied: auth symbol touched: SESSION_COOKIE"
     assert not (tmp_path / "app.py").exists()
 
 
@@ -145,7 +146,7 @@ def test_insert_blocked_when_insert_text_contains_an_auth_symbol(tmp_path):
         command="insert", path="app.py", insert_line=0, insert_text="get_session_user()",
     )
     assert not result.ok
-    assert result.error_code == "auth_symbol_touched: get_session_user"
+    assert result.error_code == "denied: auth symbol touched: get_session_user"
     assert (tmp_path / "app.py").read_text() == "line1\n"
 
 
@@ -172,3 +173,28 @@ def test_edit_with_no_auth_symbols_configured_is_unaffected(tmp_path):
     )
     assert result.ok
     assert (tmp_path / "app.py").read_text() == "bar\n"
+
+
+def test_every_guard_refusal_is_denied_and_never_retryable(tmp_path):
+    # The three write guards and the two path guards are refusals, not
+    # failures. Retrying any of them is how a boundary becomes a suggestion.
+    (tmp_path / "app.py").write_text("pass\n")
+    refusals = [
+        _call(tmp_path, command="view", path="../../etc/passwd"),
+        _call(tmp_path, command="view", path="crypto.py"),
+        _call_with_auth_symbols(
+            tmp_path, ("get_session_user",), command="str_replace", path="app.py",
+            old_str="pass", new_str="get_session_user()",
+        ),
+    ]
+    for result in refusals:
+        assert classify(result.error_code) is ErrorClass.DENIED
+        assert not is_retryable(result.error_code)
+
+
+def test_an_ambiguous_match_now_says_how_many_it_found(tmp_path):
+    # The refusal is only actionable if the agent can tell how much more
+    # context it needs to add.
+    (tmp_path / "a.txt").write_text("foo\nfoo\nfoo\n")
+    result = _call(tmp_path, command="str_replace", path="a.txt", old_str="foo", new_str="bar")
+    assert "matches 3 times" in result.error_code
