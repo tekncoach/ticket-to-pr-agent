@@ -236,3 +236,20 @@ def test_a_first_read_failure_still_allows_the_first_post():
     assert result.ok
     assert result.data.startswith("commented on ")
     assert len(issue.comments) == 1
+
+
+def test_exhausted_cycles_keep_the_real_error_class():
+    # Coach review, Day 5: the exhaustion path wrapped the code in a ToolError
+    # declared INTERNAL. It read correctly only because nothing looked at the
+    # class — and the taxonomy exists precisely to be looked at.
+    from agent.errors import ErrorClass, classify, is_retryable
+
+    issue = FakeIssue(post_outcomes=[httpx.Response(429, headers={"retry-after": "1"})] * 20)
+    result = _call(issue, {"issue_id": 42, "body": "CI is green."})
+
+    assert not result.ok
+    assert classify(result.error_code) is ErrorClass.RATE_LIMIT
+    assert is_retryable(result.error_code)
+    assert result.error_code.startswith("rate_limit: "), "the class is not doubled"
+    assert result.error_code.count("rate_limit") == 1
+    assert result.error_code.endswith("gave up after 3 cycles")

@@ -89,6 +89,22 @@ def is_retryable(error_code: str | None) -> bool:
     return classify(error_code) in RETRYABLE
 
 
+def parse(error_code: str | None) -> ToolError:
+    """A wire-form error_code back into the ToolError it came from.
+
+    The counterpart to str(ToolError). Anything that catches a failure and
+    re-raises it with more context needs this: rebuilding the ToolError from
+    the class alone loses the detail, and passing the whole code back in as
+    the detail doubles the prefix — "rate_limit: rate_limit: HTTP 429".
+    """
+    error_class = classify(error_code)
+    if not error_code:
+        return ToolError(error_class)
+    head, _, tail = error_code.partition(":")
+    detail = tail.strip() if head.strip() == error_class.value else error_code
+    return ToolError(error_class, detail)
+
+
 # What a human should do about each class, written for the person reading the
 # agent's final answer rather than for the log. A run that ends in failure ends
 # with one of these; a bare error code is not something anyone can act on, and

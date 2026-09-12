@@ -34,7 +34,7 @@ import os
 import time
 
 from agent.config import REPO
-from agent.errors import ErrorClass, ToolError, is_retryable
+from agent.errors import ErrorClass, ToolError, is_retryable, parse
 from agent.runtime import Tool, ToolResult
 from agent.secrets_redaction import redact_secrets
 from tools.http_client import ResilientClient, idempotency_key
@@ -111,6 +111,11 @@ def _handler(arguments: dict) -> ToolResult:
     # that opening the gate cannot on its own start posting to a real repo.
     dry_run = bool(arguments.get("dry_run")) or _shadow_mode()
 
+    # The last real failure, kept as a ToolError so the class survives the
+    # loop. Wrapping an already-stringified error_code in a ToolError whose
+    # declared class is INTERNAL happens to work while only .detail is read,
+    # and lies the moment anyone reads the class — which is the one thing the
+    # taxonomy exists to be trusted for.
     error = ToolError(ErrorClass.INTERNAL, "no attempt was made")
     posted_once = False
     with _build_client(token) as client:
@@ -154,7 +159,7 @@ def _handler(arguments: dict) -> ToolResult:
                     f"commented on {target} (comment {comment.get('id')}): {comment.get('html_url')}"
                 ))
 
-            error = ToolError(ErrorClass.INTERNAL, result.error_code or "")
+            error = parse(result.error_code)
             if not is_retryable(result.error_code):
                 return ToolResult(
                     ok=False,
@@ -164,7 +169,11 @@ def _handler(arguments: dict) -> ToolResult:
             if cycle < MAX_CYCLES - 1:
                 time.sleep(CYCLE_DELAY_S)
 
-    return ToolResult(ok=False, error_code=f"{error.detail} after {MAX_CYCLES} cycles")
+    # Rebuilt from the class rather than by appending to the previous string:
+    # the transport already wrote "after N attempts" into it, and stacking a
+    # second suffix produces "after 4 attempts after 3 cycles".
+    return ToolResult(ok=False, error_code=str(ToolError(
+        error.error_class, f"{error.detail} — gave up after {MAX_CYCLES} cycles")))
 
 
 comment_on_ticket = Tool(

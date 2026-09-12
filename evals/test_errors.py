@@ -13,6 +13,7 @@ from agent.errors import (
     classify,
     from_status,
     is_retryable,
+    parse,
 )
 
 
@@ -72,3 +73,27 @@ def test_tool_error_exposes_its_own_retryability():
     assert ToolError(ErrorClass.TIMEOUT).retryable
     assert not ToolError(ErrorClass.DENIED).retryable
     assert not ToolError(ErrorClass.VALIDATION).retryable
+
+
+def test_parse_round_trips_a_wire_form_code():
+    # The counterpart to str(ToolError), needed by anything that catches a
+    # failure and re-raises it with more context.
+    for error_class in ErrorClass:
+        original = ToolError(error_class, "HTTP 429 (some detail)")
+        assert parse(str(original)) == original
+        assert parse(str(ToolError(error_class))) == ToolError(error_class, "")
+
+
+def test_parse_does_not_double_the_prefix():
+    # The bug it exists to prevent: feeding a whole error_code back in as a
+    # detail produced "rate_limit: rate_limit: HTTP 429".
+    reparsed = parse("rate_limit: HTTP 429")
+    assert str(ToolError(reparsed.error_class, f"{reparsed.detail} — gave up")) == \
+        "rate_limit: HTTP 429 — gave up"
+
+
+def test_parse_keeps_an_unrecognised_code_whole_as_the_detail():
+    # Nothing to strip, and dropping it would lose the only information there.
+    parsed = parse("something_nobody_mapped: with detail")
+    assert parsed.error_class is ErrorClass.INTERNAL
+    assert parsed.detail == "something_nobody_mapped: with detail"
