@@ -154,8 +154,13 @@ class ResilientClient:
         return ToolResult(ok=False, error_code=str(error), data=body)
 
 
-def idempotency_key(user_id: str, action: str, payload: dict) -> str:
+def idempotency_key(actor: str, action: str, payload: dict) -> str:
     """A stable key for one intended write. The same intent hashes to the same
-    key, so a retry is recognisable as the same request rather than a new one."""
-    raw = json.dumps({"u": user_id, "a": action, "p": payload}, sort_keys=True)
+    key, so a retry is recognisable as the same request rather than a new one.
+
+    actor, not user_id: this agent runs as a service account, so there is no
+    user to key on — callers pass the target repo. Naming the parameter for an
+    identity we do not have would promise a scoping we cannot deliver.
+    """
+    raw = json.dumps({"u": actor, "a": action, "p": payload}, sort_keys=True)
     return hashlib.sha256(raw.encode()).hexdigest()[:32]

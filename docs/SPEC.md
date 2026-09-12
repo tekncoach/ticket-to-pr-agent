@@ -59,6 +59,8 @@ Git and GitHub operations are hand-written calls for now, to keep the mechanics 
 
 The CI is the oracle; the agent's job is to converge to green CI. The only local gate before `open_pr` is **running the tests**. Lint, type-check, and coverage stay CI-only for now — they are added as local gates later, and only if failure-mode analysis shows they are top causes of first-attempt CI failures. We do not pre-add controls whose need we have not measured.
 
+Tool-level failure handling — the retry policy, the error taxonomy, idempotency on writes, and the chaos checks behind them — is in [`docs/resilience.md`](resilience.md).
+
 **Turn budget.** The edit→test loop is capped at `MAX_TURNS` (default 8) cycles. On exhaustion the agent stops, opens **no PR**, and posts a "could not resolve after N turns" comment via `comment_on_ticket`. It never ships a PR it could not get green — a failed run is a comment, not a broken draft left behind.
 
 ## Runtime & isolation
