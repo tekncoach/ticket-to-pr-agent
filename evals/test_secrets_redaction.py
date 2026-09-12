@@ -58,3 +58,18 @@ def test_non_json_output_returns_text_unmodified_rather_than_crashing():
     with patch("agent.secrets_redaction.subprocess.run", return_value=proc):
         result = redact_secrets("ordinary text, no secrets here")
     assert result == "ordinary text, no secrets here"
+
+
+def test_a_held_credential_is_redacted_by_value_not_by_shape(monkeypatch):
+    # Our own token is the one secret guaranteed to be in reach of anything we
+    # log, and it need not look like a secret to a pattern matcher.
+    monkeypatch.setenv("GITHUB_TOKEN", "not-token-shaped-at-all-but-real")
+    assert "not-token-shaped" not in redact_secrets("rejected: not-token-shaped-at-all-but-real")
+
+
+def test_a_short_or_empty_credential_never_becomes_a_match_everything_rule(monkeypatch):
+    # The failure mode this guards: an unset or placeholder env var whose
+    # value is "" or "x" would otherwise blank out ordinary text.
+    monkeypatch.setenv("GITHUB_TOKEN", "")
+    monkeypatch.setenv("HF_TOKEN", "x")
+    assert redact_secrets("an ordinary sentence") == "an ordinary sentence"

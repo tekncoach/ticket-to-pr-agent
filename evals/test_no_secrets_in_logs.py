@@ -64,3 +64,17 @@ def test_token_never_appears_in_a_failed_result(monkeypatch):
     assert not result.ok
     logged_content = (result.error_code or "") + str(result.data or "")
     assert FAKE_TOKEN not in logged_content
+
+
+def test_token_never_leaks_through_an_error_body_that_echoes_it(monkeypatch):
+    # The nastiest shape, and the one no pattern can catch: an API that
+    # reflects the credential back in its own error text. Shape-based rules
+    # only match what looks like a secret; the token we hold is known exactly,
+    # so it is scrubbed by value before any pattern runs.
+    monkeypatch.setenv("GITHUB_TOKEN", FAKE_TOKEN)
+    echoing = httpx.Response(422, text=f"token {FAKE_TOKEN} is malformed")
+
+    result, _ = _call_with_response(echoing, {"issue_id": 1})
+
+    assert not result.ok
+    assert FAKE_TOKEN not in (result.error_code or "") + str(result.data or "")

@@ -21,6 +21,12 @@
 # Still, no rule anywhere for Anthropic's sk-ant- key format (checked by
 # testing, not assumed) — supplemented by hand below.
 #
+# Pattern matching is a guess about what a secret looks like. The credentials
+# we hold are not a guess, so they are scrubbed by value first: an API that
+# echoes a token back in an error message ("token <x> is malformed") defeats
+# every shape-based rule, and our own token is the one secret guaranteed to
+# be in reach of anything we log.
+#
 # GitHub itself already scans issue bodies/comments for secrets (free on
 # public repos), but that's a platform-side notification to the secret's
 # owner, not an API we can call before OUR OWN pipeline ingests the same
@@ -28,6 +34,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 
@@ -42,6 +49,20 @@ _SUPPLEMENTARY_PATTERNS = [
 
 _BETTERLEAKS_TIMEOUT_S = 10
 
+# Env vars holding a credential this process actually carries. Anything short
+# is a placeholder or an accident, and substituting it would blank out
+# ordinary text — an empty value must never turn into a match-everything rule.
+_CREDENTIAL_ENV_VARS = ("GITHUB_TOKEN", "LLM_API_KEY", "ANTHROPIC_API_KEY", "HF_TOKEN")
+_MIN_CREDENTIAL_LENGTH = 8
+
+
+def _redact_known_credentials(text: str) -> str:
+    for name in _CREDENTIAL_ENV_VARS:
+        value = os.environ.get(name, "")
+        if len(value) >= _MIN_CREDENTIAL_LENGTH and value in text:
+            text = text.replace(value, REDACTED)
+    return text
+
 
 def redact_secrets(text: str) -> str:
     """Replace every secret-shaped substring in text with a placeholder.
@@ -49,6 +70,8 @@ def redact_secrets(text: str) -> str:
     Applied to untrusted external content before it reaches the model, the
     trace log, or a final answer.
     """
+    text = _redact_known_credentials(text)
+
     for pattern in _SUPPLEMENTARY_PATTERNS:
         text = pattern.sub(REDACTED, text)
 
