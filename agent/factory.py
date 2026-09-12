@@ -13,6 +13,7 @@ from agent.event_sink import EventSink, JSONLFileSink, MultiSink, StdoutSink
 from agent.runtime import AgentRuntime, Tool
 from rag.retrieve import GROUNDING
 from tools.bash import bash
+from tools.comment_on_ticket import comment_on_ticket
 from tools.edit_file import edit_file
 from tools.fetch_ticket import fetch_ticket
 from tools.search_kb import search_kb
@@ -20,9 +21,11 @@ from tools.search_kb import search_kb
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
-# The write gate: edit_file is side_effect=True, so it's rejected unless
-# allow_side_effects is True. SHADOW_MODE=true (the safe default) means
-# writes stay off; set SHADOW_MODE=false to actually let the agent edit.
+# The write gate: edit_file and comment_on_ticket are side_effect=True, so
+# they're rejected unless allow_side_effects is True. SHADOW_MODE=true (the
+# safe default) means writes stay off; set SHADOW_MODE=false to enable them.
+# comment_on_ticket carries its own shadow check as well, so opening this
+# gate is not on its own enough to start posting to a real repo.
 SHADOW_MODE = os.environ.get("SHADOW_MODE", "true").lower() == "true"
 # Prepared, off by default. If flipped on, raise MAX_TOKENS accordingly —
 # the budget_tokens path (Haiku 4.5, our default) requires
@@ -58,6 +61,7 @@ SYSTEM_PROMPT = (
 # register a tool instead of two that can drift apart.
 TOOLS: dict[str, Tool] = {
     "bash": bash,
+    "comment_on_ticket": comment_on_ticket,
     "fetch_ticket": fetch_ticket,
     "search_kb": search_kb,
     "str_replace_based_edit_tool": edit_file,

@@ -8,9 +8,13 @@
 #
 # 1. Retrying a write duplicates it. A retried POST that already created an
 #    issue creates a second one. Retries are therefore restricted to
-#    idempotent methods, unless the caller supplies an idempotency key — which
-#    is what makes the write safe to repeat. idempotency_key() is not a helper
-#    sitting next to request(); passing it is what unlocks the retry.
+#    idempotent methods, unless the caller supplies an idempotency key.
+#    idempotency_key() is not a helper sitting next to request(); passing it
+#    is what unlocks the retry.
+#    ⚠ Passing it only makes the write safe if the SERVER honours the header.
+#    GitHub does not — see tools/comment_on_ticket.py, which enforces
+#    idempotency itself and deliberately withholds the key so this layer
+#    cannot repost.
 # 2. Reporting the wrong error at the end. Looping and then returning a fixed
 #    code means four 500s get reported as a rate limit. The last real error is
 #    what comes back.
