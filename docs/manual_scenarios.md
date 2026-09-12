@@ -91,3 +91,40 @@ turn 1: final answer — confirms the insert
 ## What these scenarios did *not* surface
 
 No infinite-retry loop, no invented tool arguments, no hallucinated tool output, and no case where the write gate was bypassed. That is itself informative: the gate is doing its job, not merely existing unexercised. `edit_file`'s `ambiguous_match` path and the path-escape/denylist guards are covered by `evals/test_edit_file_tool.py` instead of another manual scenario — exactly the kind of regression a red test should catch, not a doc that says it was checked once.
+
+## 8. The write path, live against the real GitHub API
+
+Everything about `comment_on_ticket` is tested through `httpx.MockTransport`. A mock proves the logic, not the integration — so this ran against `tekncoach/liberty-rider-myroadtrips` issue #13, with `SHADOW_MODE=false` and a real `GITHUB_TOKEN`.
+
+**Call 1**
+
+```
+commented on tekncoach/liberty-rider-myroadtrips#13 (comment 5648014863):
+https://github.com/tekncoach/liberty-rider-myroadtrips/issues/13#issuecomment-5648014863
+```
+
+**Call 2, identical intent, no arguments changed**
+
+```
+already commented on tekncoach/liberty-rider-myroadtrips#13 (comment 5648014863)
+— no duplicate posted: https://…#issuecomment-5648014863
+```
+
+**Call 3, `dry_run=True`, different body**
+
+```
+would comment on tekncoach/liberty-rider-myroadtrips#13 (dry_run, nothing posted): something else
+```
+
+**Verified independently**, not read off the tool's own receipt:
+
+```
+$ gh api repos/tekncoach/liberty-rider-myroadtrips/issues/13/comments --jq 'length'
+1
+```
+
+One comment on the issue after two calls, carrying the marker `<!-- agent-idempotency: 1564630e0bd577e3335d0287af9e3cef -->` and rendering invisibly on the page.
+
+`fetch_ticket` was exercised in the same run and returned issue #13's real title, so both directions of the integration are confirmed live, not only the read path scenario 3 covered.
+
+**Assessment:** correct, and it is the claim that most needed live proof. GitHub honours no idempotency header, so the guarantee rests entirely on our own read-before-write — a mock asserting it would only be asserting our fake. Second call reached GitHub for the read, then stopped; nothing was posted twice.

@@ -61,6 +61,12 @@ already commented on tekncoach/liberty-rider-myroadtrips#42 (comment 100) — no
 would comment on tekncoach/liberty-rider-myroadtrips#42 (SHADOW_MODE, nothing posted): CI is green.
 ```
 
+## Verified live
+
+The write path was run against the real GitHub API (`tekncoach/liberty-rider-myroadtrips` issue #13, `SHADOW_MODE=false`): two identical calls, one comment on the issue, confirmed by querying GitHub rather than by reading the tool's own receipt. Written up in [`docs/manual_scenarios.md`](manual_scenarios.md), scenario 8.
+
+This mattered more here than elsewhere. GitHub honours no idempotency header, so the guarantee rests entirely on our own read-before-write — and a mock asserting it would only be asserting our fake.
+
 ## Chaos checks — observed behaviour
 
 Each failure was injected through `httpx.MockTransport` against the real tools. `req` counts actual HTTP requests made.
