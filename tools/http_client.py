@@ -43,7 +43,20 @@ MAX_DELAY_S = 60.0
 IDEMPOTENT_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "PUT", "DELETE"})
 
 
-def _retry_after_seconds(response: httpx.Response) -> float | None:
+def retry_after_seconds(source: httpx.Response | ToolResult | None) -> float | None:
+    """Retry-After from a response, or from a ToolResult that carried one back.
+
+    The cycle loop in tools/comment_on_ticket.py only sees the ToolResult, and
+    a server that said how long to wait should be obeyed at both layers.
+    """
+    if isinstance(source, ToolResult):
+        return source.retry_after
+    if source is None:
+        return None
+    return _response_retry_after(source)
+
+
+def _response_retry_after(response: httpx.Response) -> float | None:
     """Retry-After in seconds, capped. None when absent or not a number —
     the HTTP-date form is unused by the APIs we call, so it is not parsed."""
     raw = response.headers.get("retry-after")
@@ -55,7 +68,7 @@ def _retry_after_seconds(response: httpx.Response) -> float | None:
         return None
 
 
-def _backoff_delay(attempt: int, retry_after: float | None) -> float:
+def backoff_delay(attempt: int, retry_after: float | None = None) -> float:
     """The server's own number wins when it gave one. Otherwise exponential
     with equal jitter: half the delay fixed so we always back off, half random
     so simultaneous callers spread out instead of retrying in lockstep."""
@@ -63,6 +76,9 @@ def _backoff_delay(attempt: int, retry_after: float | None) -> float:
         return retry_after
     delay = min(BASE_DELAY_S * (2 ** attempt), MAX_DELAY_S)
     return delay / 2 + random.uniform(0, delay / 2)
+
+
+_backoff_delay = backoff_delay  # the private spelling the tests were written against
 
 
 class ResilientClient:
@@ -112,6 +128,7 @@ class ResilientClient:
         url = f"{self.base_url}{path}"
         error = ToolError(ErrorClass.INTERNAL, "no attempt was made")
         body: str | None = None
+        retry_after: float | None = None
 
         for attempt in range(self.max_attempts):
             retry_after = None
@@ -127,7 +144,7 @@ class ResilientClient:
                 if response.status_code < 400:
                     return ToolResult(ok=True, data=response.json() if response.content else None)
                 error_class = from_status(response.status_code)
-                retry_after = _retry_after_seconds(response)
+                retry_after = _response_retry_after(response)
                 # GitHub signals a secondary rate limit as 403 + Retry-After.
                 # That header is the only thing separating it from a plain
                 # permissions refusal, which must never be retried.
@@ -151,7 +168,7 @@ class ResilientClient:
                 break
             time.sleep(_backoff_delay(attempt, retry_after))
 
-        return ToolResult(ok=False, error_code=str(error), data=body)
+        return ToolResult(ok=False, error_code=str(error), data=body, retry_after=retry_after)
 
 
 def idempotency_key(actor: str, action: str, payload: dict) -> str:

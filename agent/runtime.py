@@ -60,6 +60,11 @@ class ToolResult:
     ok: bool
     data: Any = None
     error_code: str | None = None
+    # Seconds the server asked us to wait, when it said so. Carried here
+    # rather than left in the response, because a caller that retries the tool
+    # is a layer above the one that saw the header — and "wait 60s" is exactly
+    # the instruction that must not be lost on the way up.
+    retry_after: float | None = None
 
 @dataclass
 class Tool:

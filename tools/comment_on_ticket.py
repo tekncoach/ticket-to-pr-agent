@@ -37,7 +37,12 @@ from agent.config import REPO
 from agent.errors import ErrorClass, ToolError, is_retryable, parse
 from agent.runtime import Tool, ToolResult
 from agent.secrets_redaction import redact_secrets
-from tools.http_client import ResilientClient, idempotency_key
+from tools.http_client import (
+    ResilientClient,
+    backoff_delay,
+    idempotency_key,
+    retry_after_seconds,
+)
 
 GITHUB_API = "https://api.github.com"
 GITHUB_HEADERS = {
@@ -45,8 +50,23 @@ GITHUB_HEADERS = {
     "X-GitHub-Api-Version": "2022-11-28",
 }
 
+# Two retry layers sit on top of each other here, and the composition is
+# deliberate rather than accidental — spelling it out because 3 cycles over a
+# client that retries 4 times reads like 12 attempts against a rate limit.
+#
+#   Transport (ResilientClient): retries the READ, up to READ_ATTEMPTS. It
+#     never retries the POST — no idempotency key is passed, precisely so it
+#     cannot repost blind.
+#   Cycle (here): re-runs the whole read-then-write, because that is the only
+#     thing that can notice a write which landed and lost its response.
+#
+# The read's budget is cut to 2 inside the cycle for exactly this reason: the
+# cycle already provides the outer retry, so the default 4 would multiply
+# rather than add. Worst case is now READ_ATTEMPTS x MAX_CYCLES reads plus
+# MAX_CYCLES writes — 9 requests, not 15 — and a test pins that number.
 MAX_CYCLES = 3
-CYCLE_DELAY_S = 1.0
+READ_ATTEMPTS = 2
+MAX_REQUESTS = MAX_CYCLES * (READ_ATTEMPTS + 1)
 # One page is enough to find a marker we posted ourselves, which is always
 # among the most recent comments. A busy issue could in principle push it past
 # 100 — the cost of missing it is one duplicate comment, not a wrong action.
@@ -59,7 +79,7 @@ def _marker(key: str) -> str:
 
 def _build_client(token: str) -> ResilientClient:
     # A seam, so tests can answer with a MockTransport instead of a network.
-    return ResilientClient(GITHUB_API, token, timeout=10)
+    return ResilientClient(GITHUB_API, token, timeout=10, max_attempts=READ_ATTEMPTS)
 
 
 def _shadow_mode() -> bool:
@@ -167,7 +187,10 @@ def _handler(arguments: dict) -> ToolResult:
                     data=redact_secrets(result.data) if isinstance(result.data, str) else None,
                 )
             if cycle < MAX_CYCLES - 1:
-                time.sleep(CYCLE_DELAY_S)
+                # The same jittered backoff the transport uses, not a flat
+                # second: two layers sleeping in lockstep is how a recovering
+                # service gets hit by a wave of identical callers.
+                time.sleep(backoff_delay(cycle, retry_after_seconds(result)))
 
     # Rebuilt from the class rather than by appending to the previous string:
     # the transport already wrote "after N attempts" into it, and stacking a

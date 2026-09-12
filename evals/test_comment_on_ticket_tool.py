@@ -253,3 +253,43 @@ def test_exhausted_cycles_keep_the_real_error_class():
     assert result.error_code.startswith("rate_limit: "), "the class is not doubled"
     assert result.error_code.count("rate_limit") == 1
     assert result.error_code.endswith("gave up after 3 cycles")
+
+
+def test_the_two_retry_layers_cannot_multiply_past_the_stated_cap():
+    # Coach review, Day 5: 3 cycles over a client that retries 4 times reads
+    # like 12 attempts against a rate limit. The read's budget is cut inside
+    # the cycle so the layers add rather than multiply — this pins the number
+    # rather than leaving it to be rediscovered.
+    from tools.comment_on_ticket import MAX_CYCLES, MAX_REQUESTS, READ_ATTEMPTS
+
+    assert MAX_REQUESTS == MAX_CYCLES * (READ_ATTEMPTS + 1) == 9
+
+    seen = []
+
+    def everything_fails(request):
+        seen.append(request)
+        return httpx.Response(503)
+
+    issue = FakeIssue()
+    issue.handler = everything_fails
+    _call(issue, {"issue_id": 42, "body": "CI is green."})
+
+    assert len(seen) <= MAX_REQUESTS
+
+
+def test_the_cycle_waits_as_long_as_the_server_asked():
+    # A Retry-After seen by the transport has to reach the layer above it,
+    # or the outer loop sleeps a flat second while the server said sixty.
+    slept = []
+    issue = FakeIssue(post_outcomes=[httpx.Response(429, headers={"retry-after": "30"})] * 20)
+
+    def build(token):
+        return ResilientClient(
+            "https://api.github.com", token, transport=httpx.MockTransport(issue.handler),
+        )
+
+    with patch("tools.comment_on_ticket._build_client", build), \
+         patch("tools.comment_on_ticket.time.sleep", side_effect=slept.append):
+        _call_result = comment_on_ticket.handler({"issue_id": 42, "body": "CI is green."})
+
+    assert 30.0 in slept, "the server's own number never reached the cycle loop"
