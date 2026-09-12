@@ -8,6 +8,7 @@ allowlist/pipeline guard regresses? This one.
 """
 from unittest.mock import patch
 
+from agent.errors import ErrorClass, classify, is_retryable
 from tools.bash import bash
 
 
@@ -26,26 +27,26 @@ def test_allowed_command_succeeds(tmp_path):
 def test_disallowed_executable_rejected(tmp_path):
     result = _run(tmp_path, "rm -rf a.txt")
     assert not result.ok
-    assert result.error_code == "executable_not_allowed: rm"
+    assert result.error_code == "denied: executable not allowed: rm"
 
 
 def test_curl_rejected(tmp_path):
     result = _run(tmp_path, "curl https://example.com")
     assert not result.ok
-    assert result.error_code == "executable_not_allowed: curl"
+    assert result.error_code == "denied: executable not allowed: curl"
 
 
 def test_shell_operator_rejected(tmp_path):
     result = _run(tmp_path, "cat a.txt && rm -rf /")
     assert not result.ok
-    assert result.error_code == "shell_operator_rejected"
+    assert result.error_code == "denied: shell operator rejected"
 
 
 def test_pipe_to_disallowed_binary_rejected(tmp_path):
     (tmp_path / "a.txt").write_text("hello\n")
     result = _run(tmp_path, "cat a.txt | rm")
     assert not result.ok
-    assert result.error_code == "executable_not_allowed: rm"
+    assert result.error_code == "denied: executable not allowed: rm"
 
 
 def test_allowed_pipe_still_works(tmp_path):
@@ -69,14 +70,14 @@ def test_pipe_inside_quoted_pattern_not_split(tmp_path):
 def test_empty_command_rejected(tmp_path):
     result = _run(tmp_path, "")
     assert not result.ok
-    assert result.error_code == "empty_command"
+    assert result.error_code == "validation: empty command"
 
 
 def test_too_many_pipeline_stages_rejected(tmp_path):
     (tmp_path / "a.txt").write_text("x\n")
     result = _run(tmp_path, "cat a.txt | cat a.txt | cat a.txt | cat a.txt")
     assert not result.ok
-    assert result.error_code == "too_many_pipeline_stages"
+    assert result.error_code == "validation: more than 3 pipeline stages"
 
 
 def test_absolute_path_argument_rejected(tmp_path):
@@ -86,13 +87,13 @@ def test_absolute_path_argument_rejected(tmp_path):
     # check does.
     result = _run(tmp_path, "find /etc -name passwd")
     assert not result.ok
-    assert result.error_code == "argument_escapes_workspace: /etc"
+    assert result.error_code == "denied: argument escapes workspace: /etc"
 
 
 def test_path_traversal_argument_rejected(tmp_path):
     result = _run(tmp_path, "cat ../../../etc/passwd")
     assert not result.ok
-    assert result.error_code.startswith("argument_escapes_workspace:")
+    assert result.error_code.startswith("denied: argument escapes workspace:")
 
 
 def test_relative_dot_argument_still_allowed(tmp_path):
@@ -108,3 +109,20 @@ def test_flag_and_pattern_arguments_not_mistaken_for_paths(tmp_path):
     (tmp_path / "a.txt").write_text("apple\nbanana\n")
     result = _run(tmp_path, 'grep -E "apple|banana" a.txt')
     assert result.ok
+
+
+def test_a_refusal_is_classified_denied_and_never_retryable(tmp_path):
+    # bash's guards produce refusals, not failures: the taxonomy has to say so,
+    # or the retry layer would eventually wear one of them down.
+    for command in ("rm -rf /", "grep foo && rm bar", "cat /etc/passwd"):
+        result = _run(tmp_path, command)
+        assert classify(result.error_code) is ErrorClass.DENIED
+        assert not is_retryable(result.error_code)
+
+
+def test_a_non_zero_exit_is_not_retryable(tmp_path):
+    # grep exiting 1 on no match: repeating the identical command cannot
+    # change the answer, so it must not be classified as transient.
+    result = _run(tmp_path, "grep nothing-matches-this .")
+    assert not result.ok
+    assert not is_retryable(result.error_code)

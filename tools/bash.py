@@ -23,6 +23,7 @@ import shlex
 import subprocess
 
 from agent.config import WORKSPACE
+from agent.errors import ErrorClass, ToolError
 from agent.runtime import Tool, ToolResult
 from agent.workspace_guard import resolve_within_workspace
 
@@ -30,6 +31,7 @@ ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd"}
 # "|" removed on purpose: it's handled structurally below, not as a reject.
 DISALLOWED_OPERATORS = ("&&", "||", ";", "`", "$(", ">", "<", "\n")
 MAX_PIPELINE_STAGES = 3
+_TIMEOUT_S = 10
 
 
 def _split_pipeline(argv: list[str]) -> list[list[str]] | None:
@@ -59,30 +61,33 @@ def _handler(arguments: dict) -> ToolResult:
 
     command = arguments.get("command", "")
     if not command.strip():
-        return ToolResult(ok=False, error_code="empty_command")
+        return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, "empty command")))
 
     if any(op in command for op in DISALLOWED_OPERATORS):
-        return ToolResult(ok=False, error_code="shell_operator_rejected")
+        return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.DENIED, "shell operator rejected")))
 
     try:
         argv = shlex.split(command)
     except ValueError as exc:  # unbalanced quotes, e.g.
-        return ToolResult(ok=False, error_code=f"parse_error: {exc}")
+        return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, str(exc))))
 
     stages = _split_pipeline(argv)
     if stages is None:
-        return ToolResult(ok=False, error_code="empty_pipeline_stage")
+        return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, "empty pipeline stage")))
     if len(stages) > MAX_PIPELINE_STAGES:
-        return ToolResult(ok=False, error_code="too_many_pipeline_stages")
+        return ToolResult(ok=False, error_code=str(
+            ToolError(ErrorClass.VALIDATION, f"more than {MAX_PIPELINE_STAGES} pipeline stages")))
     for stage in stages:
         if stage[0] not in ALLOWED_EXECUTABLES:
-            return ToolResult(ok=False, error_code=f"executable_not_allowed: {stage[0]}")
+            return ToolResult(ok=False, error_code=str(
+                ToolError(ErrorClass.DENIED, f"executable not allowed: {stage[0]}")))
         for arg in stage[1:]:
             # Every argument, not just path-looking ones: a flag or pattern
             # ("-la", "apple|banana") resolves harmlessly inside the
             # workspace, so there is no need to guess which args are paths.
             if resolve_within_workspace(WORKSPACE, arg) is None:
-                return ToolResult(ok=False, error_code=f"argument_escapes_workspace: {arg}")
+                return ToolResult(ok=False, error_code=str(
+                    ToolError(ErrorClass.DENIED, f"argument escapes workspace: {arg}")))
 
     procs: list[subprocess.Popen] = []
     try:
@@ -102,18 +107,25 @@ def _handler(arguments: dict) -> ToolResult:
             upstream_stdout = proc.stdout
             procs.append(proc)
 
-        stdout, stderr = procs[-1].communicate(timeout=10)
+        stdout, stderr = procs[-1].communicate(timeout=_TIMEOUT_S)
         for upstream in procs[:-1]:
-            upstream.wait(timeout=10)
+            upstream.wait(timeout=_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         for proc in procs:
             proc.kill()
-        return ToolResult(ok=False, error_code="timeout")
+        return ToolResult(ok=False, error_code=str(
+            ToolError(ErrorClass.TIMEOUT, f"command exceeded {_TIMEOUT_S}s")))
 
     returncode = procs[-1].returncode
     output = (stdout or "") + (stderr or "")  # tool contract: combined stdout+stderr
     if returncode != 0:
-        return ToolResult(ok=False, data=output, error_code=f"exit_{returncode}")
+        # VALIDATION, with a known imprecision worth naming: `grep` exiting 1
+        # on no match is a normal negative result, not a malformed request.
+        # What the agent needs from either case is the same — the command as
+        # posed produced nothing usable, so reformulate rather than repeat —
+        # and VALIDATION is the class that says exactly that, non-retryable.
+        return ToolResult(ok=False, data=output, error_code=str(
+            ToolError(ErrorClass.VALIDATION, f"command exited {returncode}")))
     return ToolResult(ok=True, data=output)
 
 
