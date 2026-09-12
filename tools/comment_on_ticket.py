@@ -28,6 +28,17 @@
 # already accepted it reports failure, and the next cycle's read finds the
 # marker and stops. A transport-level retry cannot do that — it would repost
 # blind.
+#
+# ⚠ Single-writer assumption. Read-then-write is not atomic, and GitHub offers
+# nothing to make it so: no conditional create, no idempotency key. Two writers
+# racing the same issue can both pass the marker check before either posts, and
+# the result is two comments. This is safe today only because SPEC.md's runtime
+# serialises runs — one container, one ticket at a time — so the assumption is
+# guaranteed upstream rather than here. The blast radius if that ever changes
+# is bounded and visible (a duplicate comment on an issue, no data loss, no
+# wrong action), which is why it is documented rather than locked: a
+# distributed lock costs a coordination service to prevent a cosmetic
+# duplicate. Revisit when runs stop being serialised — see docs/resilience.md.
 from __future__ import annotations
 
 import os

@@ -47,6 +47,25 @@ So `tools/comment_on_ticket.py` **withholds the key from the transport on purpos
 
 Point 3 is what survives the case a transport retry cannot: GitHub accepts the comment, the connection drops before the response arrives, the call reports failure. A transport retry reposts blind. Here the next cycle's read finds the marker and stops.
 
+### The single-writer assumption
+
+Read-then-write is **not atomic**, and GitHub offers nothing to make it so — no conditional create, no idempotency key, no compare-and-set. Two writers racing the same issue can both pass the marker check before either posts, and the issue ends up with two comments.
+
+This is safe today because it is guaranteed one layer up, not here: [`docs/SPEC.md`](SPEC.md)'s runtime is a single container running one ticket at a time, *"runs are serialized for the POC, so concurrency is not a concern yet."* The same applies to a supervisor that retries a whole run while the first is still inside its own cycle loop — nothing today does that, and nothing should until this is revisited.
+
+Left as a documented assumption rather than locked, deliberately. The blast radius is bounded and visible: one duplicate comment on an issue, no data loss, no wrong action, recoverable by a human deleting it. A distributed lock would cost a coordination service to prevent something cosmetic. **The trigger to revisit is the moment runs stop being serialised** — per-run sandboxes are already named as a fork in `docs/research/spec.md`, and this becomes a real problem on the same day that lands.
+
+### Two retry layers, and why
+
+| Layer | Retries | Budget |
+|---|---|---|
+| Transport (`ResilientClient`) | the **read** | `READ_ATTEMPTS` = 2 inside the cycle |
+| Cycle (`comment_on_ticket`) | the whole **read-then-write** | `MAX_CYCLES` = 3 |
+
+The transport never retries the POST — no idempotency key is passed to it, precisely so it cannot repost blind. The cycle exists because re-reading is the only thing that can notice a write which landed and lost its response.
+
+The read's budget is cut from the client default of 4 to 2 inside the cycle, so the layers **add rather than multiply**: worst case `MAX_CYCLES × (READ_ATTEMPTS + 1)` = **9 requests**, not 15. `MAX_REQUESTS` states it as an arithmetic identity and a test pins it. Both layers use the same jittered backoff and both honour `Retry-After`, which `ToolResult` carries up from the response that saw it.
+
 **Known limit:** the marker search reads one page of 100 comments. A very busy issue could push the marker out of that window; the cost is one duplicate comment, not a wrong action.
 
 ## Dry run
@@ -82,6 +101,7 @@ Each failure was injected through `httpx.MockTransport` against the real tools. 
 | 429 ×2 with `Retry-After`, then 200 | **ok** | — | yes | 3 |
 | Secondary rate limit: 403 + `Retry-After` | fail | `rate_limit` | yes | 4 |
 | Write lands, response lost | **ok, 1 comment** | — | cycle re-read | 3 |
+| Read and write both 5xx | fail, **0 comments confirmed** | `unavailable` | capped | 5 |
 | 4× 503, real sleeps | fail | `unavailable` | yes | 4, 2.44s |
 
 Two things the table is worth reading for.
