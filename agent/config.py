@@ -20,6 +20,12 @@ REPO = os.environ.get("TARGET_REPO", "tekncoach/liberty-rider-myroadtrips")
 _default_workspace = Path(__file__).resolve().parent.parent / "workspace" / REPO.split("/")[-1]
 WORKSPACE = Path(os.environ.get("TARGET_WORKSPACE", str(_default_workspace)))
 
+# The target repo has its own pinned dependency set (its requirements-dev.txt),
+# which is not ours — running its suite with our interpreter would test the
+# wrong environment, or fail on imports we do not have. One venv inside the
+# checkout, created at image build time, keeps the two apart.
+TARGET_PYTHON = Path(os.environ.get("TARGET_PYTHON", str(WORKSPACE / ".venv" / "bin" / "python")))
+
 # Per-run structured logs: one JSONL file per run_id, tmp/sessions/<run_id>.jsonl.
 # One project (this repo) -> one directory is enough; no <project>/<session>
 # nesting the way ~/.claude/projects/ needs, since that pattern exists to

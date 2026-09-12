@@ -16,6 +16,7 @@ from tools.bash import bash
 from tools.comment_on_ticket import comment_on_ticket
 from tools.edit_file import edit_file
 from tools.fetch_ticket import fetch_ticket
+from tools.run_tests import run_tests
 from tools.search_kb import search_kb
 
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
@@ -71,7 +72,10 @@ SYSTEM_PROMPT = (
     "connection to engineering practice, this repo, or a ticket), call "
     "search_kb at least once before answering or refusing — a refusal "
     "must be grounded in what search_kb actually returned, not skipped "
-    "on the assumption that nothing relevant exists. Be concise.\n"
+    "on the assumption that nothing relevant exists. run_tests is the gate "
+    "before any change is considered done: after editing, run it and read "
+    "'green'. A red suite is a successful call carrying the failures you "
+    "need — fix them and run it again. Be concise.\n"
     + TOOL_FAILURES + "\n"
     + GROUNDING
 )
@@ -84,6 +88,7 @@ TOOLS: dict[str, Tool] = {
     "bash": bash,
     "comment_on_ticket": comment_on_ticket,
     "fetch_ticket": fetch_ticket,
+    "run_tests": run_tests,
     "search_kb": search_kb,
     "str_replace_based_edit_tool": edit_file,
 }
