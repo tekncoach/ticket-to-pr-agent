@@ -16,13 +16,15 @@ from tools.bash import bash
 from tools.comment_on_ticket import comment_on_ticket
 from tools.edit_file import edit_file
 from tools.fetch_ticket import fetch_ticket
+from tools.open_pr import open_pr
 from tools.run_tests import run_tests
 from tools.search_kb import search_kb
 
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
-# The write gate: edit_file and comment_on_ticket are side_effect=True, so
+# The write gate: edit_file, comment_on_ticket and open_pr are
+# side_effect=True, so
 # they're rejected unless allow_side_effects is True. SHADOW_MODE=true (the
 # safe default) means writes stay off; set SHADOW_MODE=false to enable them.
 # comment_on_ticket carries its own shadow check as well, so opening this
@@ -75,7 +77,9 @@ SYSTEM_PROMPT = (
     "on the assumption that nothing relevant exists. run_tests is the gate "
     "before any change is considered done: after editing, run it and read "
     "'green'. A red suite is a successful call carrying the failures you "
-    "need — fix them and run it again. Be concise.\n"
+    "need — fix them and run it again. Only once it is green may you call "
+    "open_pr, which proposes the working tree as a draft pull request. Be "
+    "concise.\n"
     + TOOL_FAILURES + "\n"
     + GROUNDING
 )
@@ -88,6 +92,7 @@ TOOLS: dict[str, Tool] = {
     "bash": bash,
     "comment_on_ticket": comment_on_ticket,
     "fetch_ticket": fetch_ticket,
+    "open_pr": open_pr,
     "run_tests": run_tests,
     "search_kb": search_kb,
     "str_replace_based_edit_tool": edit_file,
