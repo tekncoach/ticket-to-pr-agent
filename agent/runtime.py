@@ -87,6 +87,12 @@ class Tool:
     # "text_editor_20250728"): schema-less on the wire, so we never send
     # input_schema. We still run the handler; Anthropic executes nothing.
     anthropic_type: str | None = None
+    # Whether an identical call can legitimately return something new. The
+    # anti-spin guard assumes it cannot, which is true of a lookup and false
+    # of a measurement: run_tests with the same arguments is THE call the
+    # edit-test loop repeats, because the files changed in between. Named as a
+    # known future exception on day one; it cost a completed run to collect.
+    repeatable: bool = False
 
 @dataclass
 class AgentRuntime:
@@ -313,8 +319,11 @@ class AgentRuntime:
                 tool_t0 = time.time()
                 tool_started_at = _now_iso()
 
+                tool_for_guard = self.tools.get(block.name)
                 signature = (block.name, json.dumps(block.input, sort_keys=True))
-                if signature in seen_calls:
+                if signature in seen_calls and not (
+                    tool_for_guard and tool_for_guard.repeatable
+                ):
                     # Hard stop, not another error tool_result: an error
                     # invites a retry, which is the spin we're stopping — the
                     # model already has this identical call's outcome.

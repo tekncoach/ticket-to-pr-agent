@@ -149,4 +149,10 @@ run_tests = Tool(
     },
     handler=_handler,
     side_effect=False,
+    # The one call the edit-test loop is supposed to repeat: same arguments,
+    # different answer, because the code changed between them. Without this
+    # the anti-spin guard stops a run at the exact moment it is about to
+    # confirm success — which is what it did, once, on a run that had already
+    # written the code and fixed its own failing test.
+    repeatable=True,
 )

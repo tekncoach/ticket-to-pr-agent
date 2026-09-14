@@ -271,7 +271,10 @@ async function draw(rid, result) {
     // Each step opens onto what the tool was given and what it returned. The
     // summary line alone showed that search_kb succeeded and never what it
     // found, which is the half that carries the meaning.
-    $("steps").innerHTML = [...calls.values()].map(c => `<li ${c.done ? "" : "open"}>
+    // All collapsed. The summary line is the trace; opening one is a
+    // deliberate act, and a page that expands everything by default buries
+    // the sequence under the payloads.
+    $("steps").innerHTML = [...calls.values()].map(c => `<li>
       <summary>
         <span class="mark ${c.done ? (c.ok ? "ok" : "bad") : ""}">${c.done ? (c.ok ? "✓" : "✗") : "▸"}</span>
         <span class="tool">${esc(c.tool)}</span>

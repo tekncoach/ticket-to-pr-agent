@@ -61,8 +61,19 @@ SESSIONS_DIR = Path(os.environ.get("SESSIONS_DIR", str(_default_sessions_dir)))
 # real, not arbitrary, but also repo-specific: a different TARGET_REPO
 # needs its own list, which is exactly why this is env-configurable rather
 # than a constant inside tools/edit_file.py.
+# get_session_user is deliberately NOT here, and the reason cost a run to
+# learn: it is the dependency every protected endpoint declares
+# (`user=Depends(get_session_user)`), so blocking any write that mentions it
+# blocks writing a protected endpoint at all. The agent was asked to add one
+# and was refused by our own guard.
+#
+# The distinction the list has to carry is define-or-alter versus call. These
+# two are auth internals — nothing outside the auth code has a reason to name
+# them, so a write that does is a write worth stopping. Naming the consumer
+# facing dependency instead made the guard block correct work, which is how a
+# guard gets switched off rather than fixed.
 AUTH_SENSITIVE_SYMBOLS = tuple(
     s.strip() for s in os.environ.get(
-        "AUTH_SENSITIVE_SYMBOLS", "get_session_user,_is_cross_site,SESSION_COOKIE",
+        "AUTH_SENSITIVE_SYMBOLS", "_is_cross_site,SESSION_COOKIE",
     ).split(",") if s.strip()
 )

@@ -19,6 +19,7 @@
 #    one implementation so the two can't drift.
 from __future__ import annotations
 
+import re
 import shlex
 import subprocess
 
@@ -27,7 +28,31 @@ from agent.errors import ErrorClass, ToolError
 from agent.runtime import Tool, ToolResult
 from agent.workspace_guard import resolve_within_workspace
 
-ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd"}
+ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd",
+                       "sed", "awk", "git"}
+
+# git reads the history the agent is about to add to — log, diff, show and
+# blame answer "how does this codebase do things" better than any amount of
+# grepping. Its writing half belongs to tools/open_pr.py, which owns the
+# branch, the commit and the push, so bash gets the reading half only and the
+# boundary is a subcommand allowlist rather than a blocklist of the dangerous
+# ones: a subcommand nobody has vetted is refused by default.
+_GIT_READ_SUBCOMMANDS = {"log", "diff", "show", "status", "blame", "ls-files",
+                         "describe", "shortlog", "rev-parse", "grep"}
+
+# sed and awk are in the allowlist and are NOT read-only by nature: `sed -i`
+# edits in place, and awk can redirect to a file from inside its own program
+# text. They earn their place because reading a line range is what an agent
+# asks for constantly, and refusing it sends the model hunting for another
+# way rather than doing the work.
+#
+# So the boundary moves from "which executable" to "which invocation", and it
+# is enforced here rather than hoped for: the in-place flags are rejected by
+# name, and awk's program text is checked for the one thing that writes.
+# Blocking the executable outright was the cheaper guard; this is the honest
+# one, because the capability it withholds is exactly the dangerous half.
+_WRITE_FLAGS = {"-i", "--in-place"}
+_AWK_WRITE_RE = re.compile(r"(^|[^>])>[^>]|\bprintf?\s*>|\bsystem\s*\(")
 # "|" removed on purpose: it's handled structurally below, not as a reject.
 DISALLOWED_OPERATORS = ("&&", "||", ";", "`", "$(", ">", "<", "\n")
 MAX_PIPELINE_STAGES = 3
@@ -54,6 +79,42 @@ def _split_pipeline(argv: list[str]) -> list[list[str]] | None:
     return stages
 
 
+def _expand_globs(args: list[str]) -> list[str]:
+    expanded = []
+    for arg in args:
+        if arg.startswith("-") or not any(c in arg for c in "*?["):
+            expanded.append(arg)
+            continue
+        matches = sorted(WORKSPACE.glob(arg))
+        expanded.extend(str(m.relative_to(WORKSPACE)) for m in matches) if matches \
+            else expanded.append(arg)
+    return expanded
+
+
+def _refuse_write_invocation(stage: list[str]) -> ToolResult | None:
+    """None if this sed/awk call only reads, otherwise the refusal.
+
+    Checked per argument rather than by scanning the whole command string: a
+    filename containing "-i" is not an in-place flag, and a grep pattern
+    containing ">" is not a redirect.
+    """
+    for arg in stage[1:]:
+        if arg in _WRITE_FLAGS or (arg.startswith("-i") and stage[0] == "sed"):
+            return ToolResult(ok=False, error_code=str(
+                ToolError(ErrorClass.DENIED, f"{stage[0]} may read, not write: {arg}")))
+    if stage[0] == "awk" and any(_AWK_WRITE_RE.search(a) for a in stage[1:]):
+        return ToolResult(ok=False, error_code=str(
+            ToolError(ErrorClass.DENIED, "awk program writes or shells out")))
+    if stage[0] == "git":
+        subcommand = next((a for a in stage[1:] if not a.startswith("-")), "")
+        if subcommand not in _GIT_READ_SUBCOMMANDS:
+            return ToolResult(ok=False, error_code=str(ToolError(
+                ErrorClass.DENIED,
+                f"git {subcommand or '(none)'} is not a read subcommand — "
+                f"open_pr owns branching, committing and pushing")))
+    return None
+
+
 def _handler(arguments: dict) -> ToolResult:
     # Per the tool's own contract: check restart before command.
     if arguments.get("restart"):
@@ -78,9 +139,21 @@ def _handler(arguments: dict) -> ToolResult:
         return ToolResult(ok=False, error_code=str(
             ToolError(ErrorClass.VALIDATION, f"more than {MAX_PIPELINE_STAGES} pipeline stages")))
     for stage in stages:
+        if stage[0] in ("sed", "awk", "git"):
+            refusal = _refuse_write_invocation(stage)
+            if refusal:
+                return refusal
         if stage[0] not in ALLOWED_EXECUTABLES:
             return ToolResult(ok=False, error_code=str(
                 ToolError(ErrorClass.DENIED, f"executable not allowed: {stage[0]}")))
+        # Globs, expanded here because there is no shell to do it. argv goes
+        # straight to subprocess, so `tests/*.py` arrived as a literal
+        # filename and grep exited 2 — a silent failure on an idiom every
+        # agent reaches for. Expansion is ours, so every result still goes
+        # through the same workspace check below; a pattern that matches
+        # nothing is left as-is, which is what a shell with nullglob off does.
+        stage[1:] = _expand_globs(stage[1:])
+
         for arg in stage[1:]:
             # Every argument, not just path-looking ones: a flag or pattern
             # ("-la", "apple|banana") resolves harmlessly inside the
@@ -119,13 +192,19 @@ def _handler(arguments: dict) -> ToolResult:
     returncode = procs[-1].returncode
     output = (stdout or "") + (stderr or "")  # tool contract: combined stdout+stderr
     if returncode != 0:
-        # VALIDATION, with a known imprecision worth naming: `grep` exiting 1
-        # on no match is a normal negative result, not a malformed request.
-        # What the agent needs from either case is the same — the command as
-        # posed produced nothing usable, so reformulate rather than repeat —
-        # and VALIDATION is the class that says exactly that, non-retryable.
-        return ToolResult(ok=False, data=output, error_code=str(
-            ToolError(ErrorClass.VALIDATION, f"command exited {returncode}")))
+        # A non-zero exit from a read-only command is a RESULT, not a tool
+        # failure — grep exiting 1 means "no match", which is an answer. This
+        # was VALIDATION, with the imprecision named in the code and left for
+        # later; later arrived when two consecutive fruitless greps tripped
+        # the repeated-failure guard and killed a run that was working fine.
+        #
+        # Same reasoning as tools/run_tests.py's red suite: agent/runtime.py
+        # discards ToolResult.data when ok is False, so reporting an empty
+        # grep as a failure throws away the very output that says it was
+        # empty. ok=False stays for the tool itself failing — a rejected
+        # operator, an escape, a timeout.
+        return ToolResult(ok=True, data=f"{output}(exit {returncode}: no output)"
+                          if not output.strip() else output)
     return ToolResult(ok=True, data=output)
 
 

@@ -244,3 +244,37 @@ def test_an_llm_failure_also_leaves_its_sentence_behind(monkeypatch):
     terminal = result["trace"][-1]
     assert terminal["event"] == "llm_call_error"
     assert terminal["answer"] == result["answer"]
+
+
+def test_a_repeatable_tool_may_be_called_twice_with_the_same_arguments(monkeypatch):
+    # run_tests with no selector is THE call the edit-test loop repeats: the
+    # files changed in between, so the answer changes even though the
+    # arguments do not. The anti-spin guard stopped a real run one call short
+    # of confirming a green suite it had just earned.
+    outcomes = iter([
+        ToolResult(ok=True, data={"green": False, "failed": 1}),
+        ToolResult(ok=True, data={"green": True, "failed": 0}),
+    ])
+    tool = Tool(name="run_tests", handler=lambda a: next(outcomes),
+                input_schema=None, repeatable=True)
+    runtime = _runtime(monkeypatch, {"run_tests": tool}, max_turns=3)
+
+    def _llm(messages, tools):
+        return _Response("run_tests", {}, 1)  # identical arguments every time
+
+    with patch.object(AgentRuntime, "_llm", side_effect=_llm):
+        result = runtime.run("go")
+
+    assert result.get("error") != "duplicate_tool_call"
+
+
+def test_an_ordinary_tool_is_still_stopped_on_an_identical_call(monkeypatch):
+    tool = Tool(name="bash", handler=lambda a: ToolResult(ok=True, data="x"),
+                input_schema=None)
+    runtime = _runtime(monkeypatch, {"bash": tool}, max_turns=3)
+
+    def _llm(messages, tools):
+        return _Response("bash", {"command": "ls"}, 1)
+
+    with patch.object(AgentRuntime, "_llm", side_effect=_llm):
+        assert runtime.run("go")["error"] == "duplicate_tool_call"

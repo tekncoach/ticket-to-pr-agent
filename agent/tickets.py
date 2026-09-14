@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 
-from agent.config import REPO
+from agent.config import REPO, WORKSPACE
 from agent.errors import ErrorClass, ToolError
 from agent.runtime import ToolResult
 from agent.secrets_redaction import redact_secrets
@@ -118,6 +118,16 @@ def task_prompt(issue_id: int) -> str:
     """
     return (
         f"Work GitHub issue #{issue_id} on {REPO}.\n"
+        f"You are already inside a checkout of that repository: bash runs "
+        f"there and every path is relative to its root, so `ls` and "
+        f"`view app.py` work directly. Never search from / — you are in the "
+        f"repo already, at {WORKSPACE}. Use paths relative to it — ./app.py, "
+        f"not /repo/app.py. bash allows grep, cat, find, ls, head, tail, wc, "
+        f"pwd, sed, awk and git, reading only: an in-place flag or a "
+        f"writing git subcommand is refused (open_pr owns those). No "
+        f"redirects and no && — a single pipe between allowed commands is the "
+        f"one operator that works. Globs like tests/*.py do work. stderr is "
+        f"already merged into the output, so 2>&1 is unnecessary and refused.\n"
         f"1. Read it with fetch_ticket. It names the files and the existing "
         f"patterns to follow — trust it rather than rediscovering them.\n"
         f"2. Read only what the ticket points at. The edit-then-test loop is "
