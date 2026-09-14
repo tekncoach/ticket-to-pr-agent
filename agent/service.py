@@ -14,13 +14,15 @@ import json
 import re
 import uuid
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from agent.config import SESSIONS_DIR, shadow_mode
 from agent.errors import ErrorClass, classify
-from agent.tickets import READY_LABEL, check_ready, list_ready_issues, task_prompt
+from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
 from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
 from agent.runtime import AgentRuntime
 
@@ -93,6 +95,24 @@ class ChatRequest(BaseModel):
     message: str = Field(..., max_length=8000)
 
 
+_INDEX = Path(__file__).parent / "static" / "index.html"
+
+
+@app.get("/", response_class=HTMLResponse)
+def index() -> HTMLResponse:
+    """The demo page — one file, no build step, served from the same process.
+
+    Read per request rather than cached: the page is small, and editing it
+    without restarting the service is worth more than the microseconds.
+    Carries noindex here as well as in the document, since a demo URL handed
+    to one interviewer has no business in a search index.
+    """
+    return HTMLResponse(
+        _INDEX.read_text(),
+        headers={"X-Robots-Tag": "noindex, nofollow"},
+    )
+
+
 @app.get("/health")
 def health() -> dict:
     return {
@@ -126,9 +146,14 @@ class RunRequest(BaseModel):
 
 
 @app.get("/v1/issues")
-def issues():
-    """The agent's work queue: open issues a human has labelled agent:ready."""
-    result = list_ready_issues()
+def issues(ready_only: bool = False):
+    """The backlog, each issue flagged with whether the agent may work it.
+
+    Unfiltered by default: a queue narrowed to the allowed rows hides the
+    contract, while one that marks them shows it — and clicking a row without
+    the label is how you watch /v1/run refuse.
+    """
+    result = list_issues(ready_only=ready_only)
     if not result.ok:
         return JSONResponse(status_code=502, content={"error": result.error_code})
     return {"label": READY_LABEL, "issues": result.data}

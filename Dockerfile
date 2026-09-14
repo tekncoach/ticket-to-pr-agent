@@ -76,7 +76,12 @@ ENV PATH="/app/.venv/bin:${PATH}" \
     SHADOW_MODE=true
 
 # The agent owns its own working tree — it edits files there and commits them.
-RUN mkdir -p /app/tmp /app/data/kb && chown -R agent:agent /app/tmp /app/data
+# /app/tmp/sessions must exist, with the right owner, BEFORE the named volume
+# is mounted over it. Docker initialises an empty named volume by copying the
+# image's directory — content and ownership — but only if that directory is
+# there. Create just /app/tmp and the volume appears as a fresh root-owned
+# mount, and a non-root process cannot write its own traces into it.
+RUN mkdir -p /app/tmp/sessions /app/data/kb && chown -R agent:agent /app/tmp /app/data
 USER agent
 
 # git refuses to operate on a tree it considers owned by someone else, and the

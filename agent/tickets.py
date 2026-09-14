@@ -41,25 +41,34 @@ def _fail(error_class: ErrorClass, detail: str) -> ToolResult:
 def _issue_summary(issue: dict) -> dict:
     """What the queue shows. Redacted like anything else GitHub hands back —
     an issue is written by anyone, and the queue is rendered in a browser."""
+    labels = [label.get("name") for label in issue.get("labels") or []]
     return {
         "number": issue.get("number"),
         "title": redact_secrets(issue.get("title") or ""),
         "url": issue.get("html_url"),
-        "labels": [label.get("name") for label in issue.get("labels") or []],
+        "labels": labels,
+        # Carried per row rather than used as a filter, so the queue shows the
+        # whole backlog and says which part of it the agent may touch. A queue
+        # filtered down to the allowed rows hides the contract; a queue that
+        # marks them demonstrates it, and clicking a row without the label is
+        # how you watch check_ready refuse.
+        "ready": READY_LABEL in labels,
     }
 
 
-def list_ready_issues() -> ToolResult:
-    """Open issues carrying the ready label — the agent's work queue."""
+def list_issues(ready_only: bool = False) -> ToolResult:
+    """Open issues, each flagged with whether the agent may work it."""
     token = os.environ.get("GITHUB_TOKEN")
     if not token:
         return _fail(ErrorClass.AUTH, "GITHUB_TOKEN is not set")
 
+    params = {"state": "open", "per_page": MAX_QUEUE}
+    if ready_only:
+        params["labels"] = READY_LABEL
+
     with _build_client(token) as client:
         result = client.request(
-            "GET", f"/repos/{REPO}/issues",
-            headers=GITHUB_HEADERS,
-            params={"labels": READY_LABEL, "state": "open", "per_page": MAX_QUEUE},
+            "GET", f"/repos/{REPO}/issues", headers=GITHUB_HEADERS, params=params,
         )
 
     if not result.ok:

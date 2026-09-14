@@ -12,7 +12,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.tickets import READY_LABEL, check_ready, list_ready_issues, task_prompt
+from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
 from agent.service import app
 from tools.http_client import ResilientClient
 
@@ -47,12 +47,22 @@ def _with_github(response):
     return patch("agent.tickets._build_client", _github(response))
 
 
-def test_the_queue_lists_only_labelled_issues():
-    with _with_github(httpx.Response(200, json=[_issue(13), _issue(14)])):
-        result = list_ready_issues()
+def test_the_queue_shows_the_whole_backlog_and_marks_what_may_be_worked():
+    # Not filtered to the allowed rows: a queue that hides the unlabelled
+    # issues hides the contract. Marking them shows it, and clicking one is
+    # how you watch check_ready refuse.
+    listing = [_issue(13), _issue(14, labels=("bug",))]
+    with _with_github(httpx.Response(200, json=listing)):
+        result = list_issues()
     assert result.ok
-    assert [i["number"] for i in result.data] == [13, 14]
+    assert [(i["number"], i["ready"]) for i in result.data] == [(13, True), (14, False)]
     assert result.data[0]["title"] == "Add the share link"
+
+
+def test_the_queue_can_still_be_narrowed_to_the_allowed_rows():
+    with _with_github(httpx.Response(200, json=[_issue(13)])) as _:
+        result = list_issues(ready_only=True)
+    assert result.ok and result.data[0]["ready"] is True
 
 
 def test_the_queue_filters_out_pull_requests():
@@ -60,7 +70,7 @@ def test_the_queue_filters_out_pull_requests():
     # and handing the agent its own output to work would be a loop.
     listing = [_issue(13), _issue(99, pull_request={"url": "..."})]
     with _with_github(httpx.Response(200, json=listing)):
-        result = list_ready_issues()
+        result = list_issues()
     assert [i["number"] for i in result.data] == [13]
 
 
@@ -69,7 +79,7 @@ def test_a_secret_pasted_into_a_title_is_redacted_before_the_queue_renders_it():
     # anyone.
     leaky = _issue(13, title=f"crash with sk-ant-{'x' * 40} in the config")
     with _with_github(httpx.Response(200, json=[leaky])):
-        result = list_ready_issues()
+        result = list_issues()
     assert "sk-ant-" not in result.data[0]["title"]
 
 
@@ -101,7 +111,7 @@ def test_no_token_refuses_before_any_request():
     import os
     with patch.dict(os.environ, {}, clear=True):
         assert check_ready(13).error_code == "auth: GITHUB_TOKEN is not set"
-        assert list_ready_issues().error_code == "auth: GITHUB_TOKEN is not set"
+        assert list_issues().error_code == "auth: GITHUB_TOKEN is not set"
 
 
 def test_the_task_prompt_orders_the_loop_the_spec_names():
