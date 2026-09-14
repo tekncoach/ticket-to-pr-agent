@@ -125,14 +125,18 @@ class AgentRuntime:
                     f"less than max_tokens ({self.max_tokens}) — raise max_tokens."
                 )
 
-    def run(self, user_msg: str) -> dict:
+    def run(self, user_msg: str, run_id: str | None = None) -> dict:
         # The system prompt goes to messages.create(system=...), not into the
         # messages list — that role is invalid there. Passed through in _llm.
         messages: list[dict] = [
             {"role": "user", "content": user_msg},
         ]
         trace = []
-        run_id = uuid.uuid4().hex[:12]
+        # Supplied by the caller when there is an id upstream worth keeping —
+        # the service passes the HTTP request id, so one string follows a
+        # request from the header, through the run, into the trace file, and
+        # back out as the name of something replayable.
+        run_id = run_id or uuid.uuid4().hex[:12]
 
         # A separate stream from emit()/trace: conversation content rather
         # than structured metrics. Why two files: agent/event_sink.py.
@@ -247,8 +251,9 @@ class AgentRuntime:
             for i, block in enumerate(tool_use_blocks):
                 emit({
                     "event": "tool_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
-                    "tool": block.name, "args": block.input,
+                    "tool": block.name, "tool_call_id": block.id, "args": block.input,
                 })
+                tool_t0 = time.time()
 
                 signature = (block.name, json.dumps(block.input, sort_keys=True))
                 if signature in seen_calls:
@@ -298,7 +303,14 @@ class AgentRuntime:
 
                 emit({
                     "event": "tool_result", "run_id": run_id, "ts": _now_iso(), "turn": turn,
-                    "tool": block.name, "ok": result.ok, "error_code": result.error_code,
+                    "tool": block.name, "tool_call_id": block.id,
+                    "ok": result.ok, "error_code": result.error_code,
+                    # The span. Without it, "why did this run take 40s and end
+                    # on rate_limit" is only answerable by re-running the
+                    # failure — which is the one thing you cannot do in front
+                    # of an interviewer, or during an incident.
+                    "latency_ms": (time.time() - tool_t0) * 1000,
+                    "error_class": classify(result.error_code).value if not result.ok else None,
                 })
 
                 if result.ok:

@@ -10,22 +10,41 @@
 #                 -d '{"message":"What time is it in Paris?"}'
 from __future__ import annotations
 
+import json
+import re
 import uuid
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from agent.config import shadow_mode
+from agent.config import SESSIONS_DIR, shadow_mode
 from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
 from agent.runtime import AgentRuntime
+
+# How a run ended, in the trace's own vocabulary. "incomplete" is what a
+# crashed or still-running run looks like, and saying so beats implying it
+# finished.
+_TERMINAL_EVENTS = {
+    "final", "auth_failure", "repeated_tool_failure",
+    "duplicate_call_stop", "llm_call_error",
+}
 
 app = FastAPI(title="ticket-to-pr-agent", version="0.1.0")
 
 
 @app.middleware("http")
 async def request_id_mw(request: Request, call_next):
-    rid = request.headers.get("x-request-id", str(uuid.uuid4()))
+    """One id from the request header to the trace file and back.
+
+    The starter shape tagged the HTTP request; this binds that tag to the
+    run_id AgentRuntime uses, so the header a caller sees is also the name of
+    the trace they can replay. Truncated to run_id's own width because it
+    becomes a filename, and a caller-supplied header is untrusted input: it is
+    filtered to hex so nothing reaches the path built from it.
+    """
+    supplied = request.headers.get("x-request-id", "")
+    rid = _safe_run_id(supplied) or uuid.uuid4().hex[:12]
     request.state.request_id = rid
     resp = await call_next(request)
     resp.headers["x-request-id"] = rid
@@ -50,6 +69,19 @@ def _get_runtime() -> AgentRuntime:
     if _runtime is None:
         _runtime = build_runtime()
     return _runtime
+
+
+_RUN_ID_RE = re.compile(r"^[0-9a-f]{1,32}$")
+
+
+def _safe_run_id(value: str) -> str | None:
+    """A run_id becomes a filename, so it never carries anything but hex.
+
+    This is the guard on /v1/trace/{run_id} as much as on the header: without
+    it, "../../etc/passwd" is a path, not an identifier.
+    """
+    value = (value or "").strip().lower()[:32]
+    return value if _RUN_ID_RE.match(value) else None
 
 
 class ChatRequest(BaseModel):
@@ -78,13 +110,60 @@ def health() -> dict:
 
 
 @app.post("/v1/chat")
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, request: Request):
     if not llm_ready():
         return JSONResponse(
             status_code=503,
             content={"error": "LLM_API_KEY (or ANTHROPIC_API_KEY) is not set"},
         )
-    return _get_runtime().run(req.message)
+    return _get_runtime().run(req.message, run_id=request.state.request_id)
+
+
+@app.get("/v1/trace/{run_id}")
+def trace(run_id: str):
+    """Replay a past run from its id.
+
+    This is the endpoint that turns a bad answer in front of an interviewer
+    into the strongest moment of the demo: paste the id from the response
+    header, read what the agent actually did, turn by turn, with each tool's
+    outcome, error class and duration. Debugging in someone else's
+    environment is the job.
+    """
+    safe = _safe_run_id(run_id)
+    if safe is None:
+        return JSONResponse(status_code=400, content={"error": "malformed run_id"})
+
+    path = SESSIONS_DIR / f"{safe}.jsonl"
+    if not path.exists():
+        return JSONResponse(status_code=404, content={"error": f"no trace for run {safe}"})
+
+    events = []
+    for line in path.read_text().splitlines():
+        if line.strip():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                # A half-written final line is what a crash mid-run looks
+                # like. Serving the rest beats serving nothing, and the run
+                # ending without a final event is itself the finding.
+                continue
+
+    calls = [e for e in events if e.get("event") == "tool_result"]
+    return {
+        "run_id": safe,
+        "events": events,
+        "summary": {
+            "turns": len({e.get("turn") for e in events if e.get("turn") is not None}),
+            "tool_calls": len(calls),
+            "failed_tool_calls": sum(1 for e in calls if not e.get("ok")),
+            "cost_usd": sum(e.get("cost_usd") or 0 for e in events) or None,
+            "outcome": next(
+                (e["event"] for e in reversed(events)
+                 if e.get("event") in _TERMINAL_EVENTS),
+                "incomplete",
+            ),
+        },
+    }
 
 
 if __name__ == "__main__":
