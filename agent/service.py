@@ -98,18 +98,15 @@ class ChatRequest(BaseModel):
 _INDEX = Path(__file__).parent / "static" / "index.html"
 
 
-def _conversation(path: Path) -> tuple[str | None, str | None]:
-    """(what was asked, what was finally answered) from a run's message log.
+def _conversation(events: list[dict]) -> tuple[str | None, str | None]:
+    """(what was asked, what was finally answered), from the run's own stream.
 
     The answer is the text of the last assistant turn — the one that stopped
     asking for tools. Reading the last text block regardless of position would
     pick up the model's narration between tool calls instead.
     """
-    if not path.exists():
-        return None, None
-
     asked = answer = None
-    for message in _read_events(path):
+    for message in (e for e in events if e.get("event") == "message"):
         content, role = message.get("content"), message.get("role")
         if role == "user" and asked is None and isinstance(content, str):
             asked = content
@@ -183,8 +180,7 @@ def runs(limit: int = 25):
         return {"runs": []}
 
     files = sorted(
-        (p for p in SESSIONS_DIR.glob("*.jsonl") if not p.name.endswith(".messages.jsonl")),
-        key=lambda p: p.stat().st_mtime, reverse=True,
+        SESSIONS_DIR.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True,
     )[:max(1, min(limit, 100))]
 
     out = []
@@ -193,9 +189,13 @@ def runs(limit: int = 25):
         if not events:
             continue
         calls = [e for e in events if e.get("event") == "tool_result"]
+        asked, _ = _conversation(events)
         out.append({
             "run_id": path.stem,
             "at": events[0].get("ts"),
+            # What the run was asked, so the history reads as a list of
+            # questions rather than a list of hex ids.
+            "asked": asked,
             "outcome": next(
                 (e["event"] for e in reversed(events) if e.get("event") in _TERMINAL_EVENTS),
                 "incomplete",
@@ -301,7 +301,7 @@ def trace(run_id: str):
 
     events = _read_events(path)
     calls = [e for e in events if e.get("event") == "tool_result"]
-    asked, answered = _conversation(SESSIONS_DIR / f"{safe}.messages.jsonl")
+    asked, answered = _conversation(events)
     if answered is None:
         # A run the runtime stopped never produced an assistant turn, but it
         # did produce a sentence — carried on the terminal event.

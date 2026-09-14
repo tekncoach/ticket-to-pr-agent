@@ -26,19 +26,29 @@ class EventSink:
     """Base class: does nothing. The default no-op, and the interface
     every sink below implements.
 
-    Two parallel streams per run, deliberately not merged into one file:
-    emit() carries structured metrics (latency, tokens, cost, stop_reason —
-    what runtime.py's trace already recorded), emit_message() carries the
-    actual conversation content (what was asked, what the model said or
-    thought, what a tool returned). Mixing large text content into the
-    lean metrics trace would make it harder to scan for exactly what it's
-    good at; a separate stream keeps both usable for what each is for."""
+    ONE stream per run. This used to be two — metrics in one file,
+    conversation content in another — on the argument that mixing large text
+    into a lean trace makes it harder to scan. That optimises for grepping
+    metrics at the cost of understanding a session, and understanding a
+    session is what this is for: reconstructing what happened meant joining
+    two files by hand, and the answer a run gave was invisible from the file
+    that recorded what it did.
+
+    It is also not how the field does it. OpenTelemetry's GenAI semantic
+    conventions carry the conversation as attributes ON the span —
+    `gen_ai.input.messages`, `gen_ai.output.messages` — not as a parallel
+    stream, and Langfuse, Phoenix, Braintrust and W&B all ingest that shape.
+    Separating metrics from content is a retention decision, and it belongs at
+    read time (filter by event type), not at write time.
+
+    emit_message remains as a thin alias so callers keep their intent legible
+    at the call site; both land in the same ordered stream."""
 
     def emit(self, run_id: str, event: dict) -> None:
         pass
 
     def emit_message(self, run_id: str, message: dict) -> None:
-        pass
+        self.emit(run_id, message)
 
 
 class NullSink(EventSink):
@@ -47,20 +57,16 @@ class NullSink(EventSink):
 
 
 class JSONLFileSink(EventSink):
-    """Appends to <sessions_dir>/<run_id>.jsonl (events) and
-    <sessions_dir>/<run_id>.messages.jsonl (conversation content). flush +
-    fsync per line, not buffered — see runtime.py's emit() closure for why
-    (a crash mid-run must not lose events from turns that already
-    succeeded)."""
+    """Appends to <sessions_dir>/<run_id>.jsonl — one file per run, read top
+    to bottom as the session. flush + fsync per line, not buffered: a crash
+    mid-run must not lose the turns that already succeeded, and that is also
+    what lets the demo page poll a trace while the run is still writing it."""
 
     def __init__(self, sessions_dir: Path = SESSIONS_DIR):
         self.sessions_dir = sessions_dir
 
     def emit(self, run_id: str, event: dict) -> None:
         self._append_line(f"{run_id}.jsonl", event)
-
-    def emit_message(self, run_id: str, message: dict) -> None:
-        self._append_line(f"{run_id}.messages.jsonl", message)
 
     def _append_line(self, filename: str, obj: dict) -> None:
         self.sessions_dir.mkdir(parents=True, exist_ok=True)
@@ -79,9 +85,6 @@ class StdoutSink(EventSink):
     def emit(self, run_id: str, event: dict) -> None:
         print(json.dumps(event, default=str))
 
-    def emit_message(self, run_id: str, message: dict) -> None:
-        print(json.dumps(message, default=str))
-
 
 class MultiSink(EventSink):
     """Fans one event/message out to several sinks — e.g. persist to disk
@@ -93,7 +96,3 @@ class MultiSink(EventSink):
     def emit(self, run_id: str, event: dict) -> None:
         for sink in self.sinks:
             sink.emit(run_id, event)
-
-    def emit_message(self, run_id: str, message: dict) -> None:
-        for sink in self.sinks:
-            sink.emit_message(run_id, message)

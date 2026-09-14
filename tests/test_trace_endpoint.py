@@ -168,15 +168,6 @@ def test_recent_runs_are_listed_newest_first(client):
     assert runs[0]["cost_usd"] == pytest.approx(0.002)
 
 
-def test_the_message_log_is_not_listed_as_a_run(client):
-    # Every run writes two files. Listing both would double the history and
-    # offer an id whose .jsonl is conversation content, not events.
-    api, sessions = client
-    _write_trace(sessions, "aa11", [{"event": "final", "turn": 0}])
-    (sessions / "aa11.messages.jsonl").write_text('{"role": "user"}\n')
-    assert [r["run_id"] for r in api.get("/v1/runs").json()["runs"]] == ["aa11"]
-
-
 def test_an_empty_trace_file_is_skipped_rather_than_listed_blank(client):
     api, sessions = client
     (sessions / "empty.jsonl").write_text("")
@@ -210,25 +201,24 @@ def test_the_favicon_is_served_rather_than_404ing(client):
 
 # --- what the run actually said ---------------------------------------------
 
-def _write_messages(sessions, run_id, messages):
-    (sessions / f"{run_id}.messages.jsonl").write_text(
-        "\n".join(json.dumps(m) for m in messages) + "\n"
-    )
+def _message(role, turn, content):
+    """A conversation turn as it now appears — an event in the one stream,
+    not a line in a file beside it."""
+    return {"event": "message", "role": role, "turn": turn, "content": content}
 
 
 def test_a_replayed_run_carries_the_question_and_the_answer(client):
     # The events file records what the agent DID. Serving only that made a
     # replayed run show its steps and hide its point.
     api, sessions = client
-    _write_trace(sessions, "aa11", [{"event": "final", "turn": 1}])
-    _write_messages(sessions, "aa11", [
-        {"role": "user", "turn": 0, "content": "What are the commit conventions?"},
-        {"role": "assistant", "turn": 0, "content": [
-            {"type": "text", "text": "Let me search."},
-            {"type": "tool_use", "name": "search_kb"}]},
-        {"role": "user", "turn": 0, "content": [{"type": "tool_result"}]},
-        {"role": "assistant", "turn": 1, "content": [
-            {"type": "text", "text": "Atomic commits, imperative mood [SPEC#2]."}]},
+    _write_trace(sessions, "aa11", [
+        _message("user", 0, "What are the commit conventions?"),
+        _message("assistant", 0, [{"type": "text", "text": "Let me search."},
+                                  {"type": "tool_use", "name": "search_kb"}]),
+        {"event": "tool_result", "turn": 0, "ok": True},
+        _message("assistant", 1, [{"type": "text",
+                                   "text": "Atomic commits, imperative mood [SPEC#2]."}]),
+        {"event": "final", "turn": 1},
     ])
 
     body = api.get("/v1/trace/aa11").json()
@@ -240,32 +230,31 @@ def test_narration_between_tool_calls_is_not_mistaken_for_the_answer(client):
     # Every assistant turn carries text. Taking the last text block regardless
     # of position would return "Let me search." as the answer.
     api, sessions = client
-    _write_trace(sessions, "bb22", [{"event": "final", "turn": 1}])
-    _write_messages(sessions, "bb22", [
-        {"role": "user", "turn": 0, "content": "go"},
-        {"role": "assistant", "turn": 0, "content": [
-            {"type": "text", "text": "Let me search."},
-            {"type": "tool_use", "name": "search_kb"}]},
-        {"role": "assistant", "turn": 1, "content": [{"type": "text", "text": "The real answer."}]},
+    _write_trace(sessions, "bb22", [
+        _message("user", 0, "go"),
+        _message("assistant", 0, [{"type": "text", "text": "Let me search."},
+                                  {"type": "tool_use", "name": "search_kb"}]),
+        _message("assistant", 1, [{"type": "text", "text": "The real answer."}]),
+        {"event": "final", "turn": 1},
     ])
     assert api.get("/v1/trace/bb22").json()["answer"] == "The real answer."
 
 
 def test_a_run_that_never_answered_says_so_rather_than_inventing_one(client):
     api, sessions = client
-    _write_trace(sessions, "cc33", [{"event": "tool_call", "turn": 0}])
-    _write_messages(sessions, "cc33", [
-        {"role": "user", "turn": 0, "content": "go"},
-        {"role": "assistant", "turn": 0, "content": [
-            {"type": "text", "text": "Working."}, {"type": "tool_use", "name": "bash"}]},
+    _write_trace(sessions, "cc33", [
+        _message("user", 0, "go"),
+        _message("assistant", 0, [{"type": "text", "text": "Working."},
+                                  {"type": "tool_use", "name": "bash"}]),
+        {"event": "tool_call", "turn": 0},
     ])
     body = api.get("/v1/trace/cc33").json()
     assert body["asked"] == "go"
     assert body["answer"] is None
 
 
-def test_a_trace_with_no_message_log_still_replays(client):
-    # The events file is written independently; one may exist without the other.
+def test_a_trace_with_no_conversation_still_replays(client):
+    # A run can end before any message is recorded — the summary still works.
     api, sessions = client
     _write_trace(sessions, "dd44", [{"event": "final", "turn": 0}])
     body = api.get("/v1/trace/dd44").json()

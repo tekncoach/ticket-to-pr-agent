@@ -141,9 +141,15 @@ class AgentRuntime:
         # A separate stream from emit()/trace: conversation content rather
         # than structured metrics. Why two files: agent/event_sink.py.
         def emit_message(role: str, content: Any, turn: int) -> None:
-            self.logger.emit_message(run_id, {
-                "run_id": run_id, "ts": _now_iso(), "turn": turn,
-                "role": role, "content": content,
+            # Same ordered stream as every other event, so the file reads as
+            # the session rather than as half of it. Named after
+            # OpenTelemetry's GenAI conventions: the conversation belongs with
+            # the span that produced it, not in a file beside it.
+            self.logger.emit(run_id, {
+                "event": "message", "run_id": run_id, "ts": _now_iso(),
+                "turn": turn, "role": role,
+                "gen_ai.operation.name": "chat",
+                "content": content,
             })
 
         emit_message("user", user_msg, turn=0)
@@ -207,21 +213,26 @@ class AgentRuntime:
             usage = resp.usage
             emit({
                 "event": "llm_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
+                "gen_ai.operation.name": "chat",
+                "gen_ai.provider.name": "anthropic",
                 "latency_ms": (time.time() - t0) * 1000,
                 "message_id": resp.id,
-                "model": self.model,             # what we requested (may be an alias)
-                "model_resolved": resp.model,    # the actual pinned snapshot Anthropic used
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
+                # gen_ai.request.model is what we asked for (may be an alias);
+                # gen_ai.response.model is the snapshot Anthropic actually used.
+                "gen_ai.request.model": self.model,
+                "gen_ai.response.model": resp.model,
+                "gen_ai.usage.input_tokens": usage.input_tokens,
+                "gen_ai.usage.output_tokens": usage.output_tokens,
                 # Within output_tokens, not additive — a breakdown, not a cost
                 # line. Always None today: we never request thinking.
-                "thinking_tokens": (usage.output_tokens_details.thinking_tokens
-                                    if usage.output_tokens_details else None),
+                "gen_ai.usage.reasoning.output_tokens": (
+                    usage.output_tokens_details.thinking_tokens
+                    if usage.output_tokens_details else None),
                 # Always 0 today — no cache_control breakpoints yet, despite
                 # the prompt + tool schemas repeating every turn: a real,
                 # unexploited caching win.
-                "cache_creation_input_tokens": usage.cache_creation_input_tokens,
-                "cache_read_input_tokens": usage.cache_read_input_tokens,
+                "gen_ai.usage.cache_write.input_tokens": usage.cache_creation_input_tokens,
+                "gen_ai.usage.cache_read.input_tokens": usage.cache_read_input_tokens,
                 "service_tier": usage.service_tier,
                 "cost_usd": _cost_usd(self.model, usage.input_tokens, usage.output_tokens),
                 "stop_reason": resp.stop_reason,
@@ -255,7 +266,10 @@ class AgentRuntime:
             for i, block in enumerate(tool_use_blocks):
                 emit({
                     "event": "tool_call", "run_id": run_id, "ts": _now_iso(), "turn": turn,
-                    "tool": block.name, "tool_call_id": block.id, "args": block.input,
+                    "gen_ai.operation.name": "execute_tool",
+                    "gen_ai.tool.name": block.name,
+                    "gen_ai.tool.call.id": block.id,
+                    "gen_ai.tool.call.arguments": block.input,
                 })
                 tool_t0 = time.time()
 
@@ -307,7 +321,14 @@ class AgentRuntime:
 
                 emit({
                     "event": "tool_result", "run_id": run_id, "ts": _now_iso(), "turn": turn,
-                    "tool": block.name, "tool_call_id": block.id,
+                    "gen_ai.operation.name": "execute_tool",
+                    "gen_ai.tool.name": block.name,
+                    "gen_ai.tool.call.id": block.id,
+                    # The result the tool produced, which the events stream did
+                    # not carry at all — only whether it succeeded. Reading a
+                    # past run meant seeing that search_kb worked and never
+                    # what it found.
+                    "gen_ai.tool.call.result": result.data if result.ok else None,
                     "ok": result.ok, "error_code": result.error_code,
                     # The span. Without it, "why did this run take 40s and end
                     # on rate_limit" is only answerable by re-running the
