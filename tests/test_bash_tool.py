@@ -6,6 +6,7 @@ target repo checkout. No LLM call, no live service, no key required.
 Written to answer one question: which test fails if bash's
 allowlist/pipeline guard regresses? This one.
 """
+import pytest
 from unittest.mock import patch
 
 from agent.errors import ErrorClass, classify, is_retryable
@@ -153,3 +154,28 @@ def test_an_unvetted_git_subcommand_is_refused_by_default(tmp_path):
     # An allowlist, not a blocklist of the dangerous ones: whatever git adds
     # next is refused until someone looks at it.
     assert "is not a read subcommand" in _run(tmp_path, "git bisect start").error_code
+
+
+@pytest.mark.parametrize("command", [
+    'grep -n hidden a.txt 2>/dev/null',
+    'grep -rn merged tests 2>&1',
+    'find . -name "*.py" 2> /dev/null',
+])
+def test_stderr_suppression_is_not_an_operator_worth_refusing(tmp_path, command):
+    # Six of the nine commands refused across every real run died on a
+    # redirect that cannot write a file and cannot run anything — and this
+    # handler already merges stderr into the output, so it changes nothing
+    # at all. Stripped before the operator check rather than rejected.
+    (tmp_path / "a.txt").write_text("hidden\n")
+    (tmp_path / "tests").mkdir(exist_ok=True)
+    result = _run(tmp_path, command)
+    assert result.ok or "shell operator" not in (result.error_code or "")
+
+
+def test_a_real_redirect_is_still_refused(tmp_path):
+    # Suppressing stderr is not writing a file, and the difference is the
+    # whole point of allowing one and not the other.
+    assert _run(tmp_path, "grep foo a.txt > out.txt").error_code == \
+        "denied: shell operator rejected"
+    assert _run(tmp_path, "cat a.txt 2>err.log").error_code == \
+        "denied: shell operator rejected"

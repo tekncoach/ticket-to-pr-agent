@@ -55,6 +55,14 @@ _WRITE_FLAGS = {"-i", "--in-place"}
 _AWK_WRITE_RE = re.compile(r"(^|[^>])>[^>]|\bprintf?\s*>|\bsystem\s*\(")
 # "|" removed on purpose: it's handled structurally below, not as a reject.
 DISALLOWED_OPERATORS = ("&&", "||", ";", "`", "$(", ">", "<", "\n")
+
+# Stderr redirections, stripped before the operator check rather than
+# rejected. `2>/dev/null` and `2>&1` cannot write a file and cannot run
+# anything — they only decide whether noise reaches stdout, and this handler
+# already merges the two streams, so both are no-ops here. They were the
+# single biggest cause of refusals across every real run: six of the nine
+# rejected commands died on a suppression that changes nothing.
+_STDERR_REDIRECTS = ("2>/dev/null", "2>&1", "2> /dev/null")
 MAX_PIPELINE_STAGES = 3
 _TIMEOUT_S = 10
 
@@ -123,6 +131,9 @@ def _handler(arguments: dict) -> ToolResult:
     command = arguments.get("command", "")
     if not command.strip():
         return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, "empty command")))
+
+    for redirect in _STDERR_REDIRECTS:
+        command = command.replace(redirect, " ")
 
     if any(op in command for op in DISALLOWED_OPERATORS):
         return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.DENIED, "shell operator rejected")))
