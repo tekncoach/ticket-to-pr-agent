@@ -4,7 +4,7 @@ A coding agent that turns a labeled GitHub Issue into a tested, CI-ready pull re
 
 [![CI](https://github.com/tekncoach/ticket-to-pr-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tekncoach/ticket-to-pr-agent/actions/workflows/ci.yml) ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-**Built:** ticket intake, codebase exploration, file editing, hybrid RAG with citation enforcement. **Not built:** git ops, PR creation, CI polling, issue comments — see [Status](#status).
+**Built:** the whole loop — ticket intake, codebase exploration, file editing, local test runs, draft PRs, issue comments, hybrid RAG with citation enforcement, and a clickable demo page. **Not built:** CI status polling, and the agent has not yet completed a ticket end to end — see [Status](#status).
 
 ## What it does
 
@@ -21,22 +21,75 @@ Most "agent" demos wrap an LLM call in a chat loop and call it done. This one is
 - **No agent framework.** The tool-calling loop is built directly on `anthropic.messages.create` — no LangChain, no LangGraph. Every retry, stop condition, and failure path is code you can read start to finish in one file.
 - **Native tools where they fit, hand-rolled where it matters.** File exploration and edits run on Anthropic's own `bash_20250124` and `text_editor_20250728` client-side tools — schema-less, security-hardened at the boundary (an executable allowlist, never `shell=True`, path confinement to the target checkout, a path denylist for sensitive files). GitHub calls stay hand-written REST, deliberately, to keep the mechanics visible. `GITHUB_TOKEN` itself is scoped to the `Authorization` header only — [`tests/test_no_secrets_in_logs.py`](tests/test_no_secrets_in_logs.py) asserts it directly, mocking a real fetch and checking it never lands in the tool's output, and by extension neither of the two JSONL logs below.
 - **Policy guards the model can't opt out of.** A hard cap on parallel tool calls, JSON-Schema-validated arguments on every custom tool, a mode flag that disables every write tool at once, and a hard stop the instant the model repeats an identical tool call — converting a possible infinite spin into a bounded, explainable failure.
-- **Full run observability.** Every tool call, token count (including thinking tokens), USD cost, and stop reason is written to an append-only JSONL log per run — flushed and fsynced per event, so a mid-run crash doesn't lose what already happened. A second, parallel JSONL file per run carries the actual conversation content (what was asked, what the model said or thought, what each tool returned) — kept separate so the lean metrics log stays scannable on its own. An optional live mode prints the same events to stdout as they occur.
+- **Full run observability, in one stream.** One append-only JSONL file per run — flushed and fsynced per event, so a mid-run crash keeps what already happened, and so the demo page can read a trace while the run is still writing it. Field names follow [OpenTelemetry's GenAI semantic conventions](https://github.com/open-telemetry/semantic-conventions-genai) (`gen_ai.tool.call.arguments`, `gen_ai.usage.input_tokens`, `gen_ai.system_instructions`), so exporting to Langfuse, Phoenix or LangSmith later is a rename rather than a rewrite. The conversation lives in that same stream rather than a file beside it — which is how the conventions do it, and the reason a replayed run can show what it said and not only what it did.
 - **A written spec that evolves with the code.** [`docs/SPEC.md`](docs/SPEC.md) states the problem, the tools, the SLOs, and every architecture decision with its trigger to revisit — including the ones later commits reversed, on purpose, once real usage justified it.
 
 ## How it works
 
-```
-fetch_ticket → explore (bash) → edit_file → run_tests
-                                      ↑           │
-                                      └── retry ──┘ (until green, or MAX_TURNS)
-                                                  │
-                       git_commit → git_push → open_pr → get_ci_status → comment_on_ticket
+```mermaid
+flowchart LR
+    L["agent:ready label"] --> R["POST /v1/run"]
+    R --> F["fetch_ticket"]
+    F --> K["search_kb<br/>conventions, cited"]
+    K --> B["bash<br/>read-only allowlist"]
+    B --> E["edit_file<br/>workspace-confined"]
+    E --> T["run_tests"]
+    T -- "red" --> E
+    T -- "green" --> P["open_pr<br/>draft"]
+    T -- "gave up" --> C["comment_on_ticket"]
+    P --> CI["get_ci_status"]:::unbuilt
+    CI --> C
+
+    R -.-> TR[("trace<br/>one JSONL per run")]
+    TR -.-> V["GET /v1/trace/:id<br/>replay by request id"]
+
+    classDef unbuilt stroke-dasharray: 4 3,color:#888;
 ```
 
-The first four stages are built and tested against a live target repo; the rest is the named next milestone. See [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the full diagram, including the production-pipeline reference steps (lint, type-check) this project isn't running locally yet, and why.
+Every stage is built except `get_ci_status`, which needs a pushed PR to poll. The `agent:ready` label is the contract and it is enforced in code, not described: `agent/tickets.py` refuses an unlabelled issue before the model is called at all. See [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the fuller diagram, including the production-pipeline steps (lint, type-check) this project isn't running locally yet, and why.
+
+## Demo script
+
+Three minutes, four clicks, on the page at `/`. Each one is there to fail differently.
+
+| Click | What should happen |
+|---|---|
+| **Ask the knowledge base** | `search_kb` runs, the answer carries citations like `[dora-2025-full-report#57.0]` |
+| **Ask for a write** | `comment_on_ticket` returns `would comment on …#13 (SHADOW_MODE, nothing posted)` — a receipt, not a write |
+| **Ask something off-corpus** | a refusal, grounded in what retrieval actually returned rather than in the model's general knowledge |
+| **Break it** | three attempts to reach `crypto.py`, three refusals, then the run stops itself: *"Trying again is not making progress — this is blocked on purpose, so a human has to decide whether the boundary should move."* |
+
+Then click any past run in **Recent runs**. The trace replays: the system prompt it was given, a timeline of every tool call, each one expandable onto its arguments and its result, the typed error class where something failed, and the sentence the agent ended on. That is the point of the whole thing — a bad answer in front of you becomes a session you can open and read, rather than a shrug.
+
+## Cost and limits
+
+Measured, not estimated — from the traces in `tmp/sessions/`, on `claude-haiku-4-5`:
+
+| | |
+|---|---|
+| A knowledge-base question | **$0.011–$0.047** per run, 1–4 `search_kb` calls |
+| Context window used | **3% of 200k** at the end of a typical run — occupancy, not the accumulated token spend |
+| Target suite inside the container | 175 tests, **12.6s** |
+| Retry cost, worst case | 9 HTTP requests for one comment (`MAX_CYCLES × (READ_ATTEMPTS + 1)`) |
+
+**Known limits, named because they are the questions an interviewer asks:**
+
+- **The agent has never completed a ticket end to end.** Every run demonstrated so far is a knowledge-base question or a refusal. The loop is built and each tool is tested; the whole path has not run once on a real ticket.
+- **Read-then-write is not atomic.** Two concurrent runs could both pass the duplicate check before either writes. Safe today only because runs are serialised — a documented assumption with its blast radius in [`docs/resilience.md`](docs/resilience.md), not a lock.
+- **Nothing resumes.** A run that stops re-derives work already done rather than picking it up.
+- **The corpus is not in the repository.** It cites sources that are not ours to redistribute, so `data/kb/` is mounted, not baked. Without it `search_kb` fails — typed as `unavailable`, with the agent saying so.
+- **`get_ci_status` does not exist**, so the loop ends at a draft PR and never learns whether CI went green.
+- **One tenant, one repo, one token.** No per-user identity, no isolation between targets beyond running separate instances.
 
 ## Quickstart
+
+```bash
+make run          # http://localhost:8000 — the demo page, hot-reloading
+make docker-up    # the same thing as the container the VM runs
+make test         # 283 hermetic tests, no key needed
+```
+
+### Full setup
 
 ```bash
 # Install dependencies
@@ -80,10 +133,19 @@ agent/
   cli.py         entrypoint — build an AgentRuntime, run one message
   config.py      target repo, workspace path, session log location — env-configurable
   event_sink.py  where trace events go: a JSONL file, live stdout, both, or neither (tests)
+  errors.py      one error taxonomy for every tool, and what is retryable
+  tickets.py     the trigger: which issues may be worked, and what the agent is told
+  service.py     /health, /v1/run, /v1/issues, /v1/trace/:id, and the demo page
+  static/        the demo page — one file, no build step
 tools/
-  bash.py         Anthropic's native bash tool, read-only allowlist + safe pipelining
-  edit_file.py    Anthropic's native text-editor tool, workspace-confined + denylisted
-  fetch_ticket.py hand-written GitHub REST call
+  bash.py              Anthropic's native bash tool, read-only allowlist + safe pipelining
+  edit_file.py         Anthropic's native text-editor tool, workspace-confined + denylisted
+  fetch_ticket.py      one issue, redacted
+  run_tests.py         the target repo's own suite, summarised never dumped
+  open_pr.py           branch, commit, push, draft PR — idempotent on the head branch
+  comment_on_ticket.py the outcome, posted once even if the response is lost
+  http_client.py       retries, backoff, Retry-After, and the taxonomy
+deploy/          the compose file the VM runs
 docs/            the technical spec, architecture decisions, and everything verified live
 tests/           unit tests — deterministic, hermetic, the CI gate
 evals/           behavioural evals — real model, scored, costs money
@@ -120,7 +182,11 @@ Named forks, not built — one file per topic in [`docs/research/`](docs/researc
 
 ## Status
 
-Proof of concept, under active development. Ticket intake, codebase exploration, and file editing are built and verified against a live target repo and a live GitHub API. Git operations, PR creation, CI status polling, and issue comments are specified but not yet built — see [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the exact line. CI (`.github/workflows/ci.yml`) runs the full test suite on every push and pull request — no secrets required, every test is hermetic.
+Proof of concept, under active development. Six of the seven specified tools are built and verified against a live target repo and a live GitHub API — including the write path, which was exercised against a real issue and proved not to duplicate ([`docs/manual_scenarios.md`](docs/manual_scenarios.md), scenario 8). `get_ci_status` is specified and not built; it needs a pushed PR to poll.
+
+The honest gap: **the agent has not yet run a ticket from issue to pull request.** Each tool works and is tested; the whole loop has not been exercised on a real ticket, because no issue currently carries `agent:ready` — the label is a human decision and it has not been made yet.
+
+CI (`.github/workflows/ci.yml`) runs `make test` on every push and pull request — no secrets required, every test hermetic. `make eval` is deliberately not in CI: it calls a real model and costs money per run.
 
 ## License
 
