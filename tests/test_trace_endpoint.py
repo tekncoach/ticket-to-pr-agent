@@ -150,3 +150,59 @@ def test_a_malformed_run_id_is_refused_before_any_path_is_built(client, run_id):
     assert response.status_code in (400, 404)
     if response.status_code == 400:
         assert response.json()["error"] == "malformed run_id"
+
+
+# --- the runs index ---------------------------------------------------------
+
+def test_recent_runs_are_listed_newest_first(client):
+    api, sessions = client
+    for name, ts in [("aa11", "2026-09-14T10:00:00"), ("bb22", "2026-09-14T12:00:00")]:
+        _write_trace(sessions, name, [{"event": "llm_call", "turn": 0, "ts": ts,
+                                       "cost_usd": 0.002}, {"event": "final", "turn": 0}])
+    import os, time
+    os.utime(sessions / "bb22.jsonl", (time.time(), time.time()))
+
+    runs = api.get("/v1/runs").json()["runs"]
+    assert [r["run_id"] for r in runs] == ["bb22", "aa11"]
+    assert runs[0]["outcome"] == "final"
+    assert runs[0]["cost_usd"] == pytest.approx(0.002)
+
+
+def test_the_message_log_is_not_listed_as_a_run(client):
+    # Every run writes two files. Listing both would double the history and
+    # offer an id whose .jsonl is conversation content, not events.
+    api, sessions = client
+    _write_trace(sessions, "aa11", [{"event": "final", "turn": 0}])
+    (sessions / "aa11.messages.jsonl").write_text('{"role": "user"}\n')
+    assert [r["run_id"] for r in api.get("/v1/runs").json()["runs"]] == ["aa11"]
+
+
+def test_an_empty_trace_file_is_skipped_rather_than_listed_blank(client):
+    api, sessions = client
+    (sessions / "empty.jsonl").write_text("")
+    _write_trace(sessions, "aa11", [{"event": "final", "turn": 0}])
+    assert [r["run_id"] for r in api.get("/v1/runs").json()["runs"]] == ["aa11"]
+
+
+def test_a_missing_sessions_directory_is_an_empty_list_not_a_crash(client, tmp_path, monkeypatch):
+    api, _ = client
+    monkeypatch.setattr("agent.service.SESSIONS_DIR", tmp_path / "never-created")
+    assert api.get("/v1/runs").json() == {"runs": []}
+
+
+@pytest.mark.parametrize("limit, expected", [(0, 1), (1, 1), (500, 3)])
+def test_the_limit_is_clamped_to_something_sane(client, limit, expected):
+    api, sessions = client
+    for name in ("aa11", "bb22", "cc33"):
+        _write_trace(sessions, name, [{"event": "final", "turn": 0}])
+    assert len(api.get(f"/v1/runs?limit={limit}").json()["runs"]) == expected
+
+
+def test_the_favicon_is_served_rather_than_404ing(client):
+    # A data: URI was tried and silently failed to parse, so the browser fell
+    # back to /favicon.ico and kept 404ing in the console — which is what an
+    # interviewer sees the moment they open devtools.
+    api, _ = client
+    response = api.get("/favicon.ico")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("image/svg+xml")

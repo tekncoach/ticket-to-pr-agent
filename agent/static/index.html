@@ -2,7 +2,6 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%E2%9C%93%3C/text%3E%3C/svg%3E">
 <title>ticket-to-pr-agent</title>
 <style>
   :root {
@@ -74,6 +73,11 @@
     <div class="prompts" id="prompts"></div>
   </section>
 
+  <section>
+    <h2>Recent runs</h2>
+    <div id="history" class="empty">loading&hellip;</div>
+  </section>
+
   <section id="run" hidden>
     <h2>Run <span id="rid"></span></h2>
     <div class="meta" id="runmeta"></div>
@@ -81,7 +85,8 @@
     <pre id="answer" hidden></pre>
   </section>
 
-  <footer>Shadow mode blocks every write. Nothing here reaches a real repository.</footer>
+  <footer>Traces survive a restart &mdash; they live in a named volume, not the container.<br>
+  Shadow mode blocks every write. Nothing here reaches a real repository.</footer>
 </div>
 
 <script>
@@ -127,6 +132,8 @@ async function boot() {
     if (b) start("/v1/chat", { message: PROMPTS[b.dataset.i].message });
   };
 
+  await history();
+
   try {
     const q = await (await fetch("/v1/issues")).json();
     $("queue").className = "";
@@ -145,6 +152,38 @@ async function boot() {
     };
   } catch {
     $("queue").innerHTML = `<p class="empty">Could not reach GitHub to load the queue.</p>`;
+  }
+}
+
+async function history() {
+  try {
+    const { runs } = await (await fetch("/v1/runs?limit=8")).json();
+    $("history").className = runs.length ? "" : "empty";
+    $("history").innerHTML = runs.length
+      ? runs.map(r => `<div class="row">
+          <span><a href="#" data-run="${esc(r.run_id)}">${esc(r.run_id)}</a>
+          <span class="ms">${esc((r.at ?? "").replace("T", " ").slice(0, 19))}</span></span>
+          <span class="meta">
+            <span class="badge ${r.failed_tool_calls ? "off" : ""}">${esc(r.outcome)}</span>
+            <span>${r.tool_calls} calls${r.failed_tool_calls ? `, ${r.failed_tool_calls} failed` : ""}</span>
+            ${r.cost_usd ? `<span>$${r.cost_usd.toFixed(4)}</span>` : ""}
+          </span></div>`).join("")
+      : "No runs yet.";
+    $("history").onclick = (e) => {
+      const a = e.target.closest("a[data-run]");
+      if (!a) return;
+      e.preventDefault();
+      // Replaying a past run reads its trace; it does not re-run anything,
+      // so it costs nothing and cannot write.
+      $("run").hidden = false;
+      $("rid").textContent = a.dataset.run;
+      $("steps").innerHTML = "";
+      $("answer").hidden = true;
+      draw(a.dataset.run);
+      $("run").scrollIntoView({ behavior: "smooth", block: "nearest" });
+    };
+  } catch {
+    $("history").innerHTML = "Could not read past runs.";
   }
 }
 
@@ -175,6 +214,7 @@ async function start(path, body) {
   }
   clearInterval(polling);
   await draw(rid, result);
+  await history();
   document.querySelectorAll("button").forEach(b => b.disabled = false);
 }
 

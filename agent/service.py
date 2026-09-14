@@ -17,7 +17,7 @@ import uuid
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from agent.config import SESSIONS_DIR, shadow_mode
@@ -98,6 +98,20 @@ class ChatRequest(BaseModel):
 _INDEX = Path(__file__).parent / "static" / "index.html"
 
 
+def _read_events(path: Path) -> list[dict]:
+    """A trace file's events. A half-written final line is what a crash
+    mid-run looks like — serving the rest beats serving nothing, and a run
+    ending without a final event is itself the finding."""
+    events = []
+    for line in path.read_text().splitlines():
+        if line.strip():
+            try:
+                events.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return events
+
+
 @app.get("/", response_class=HTMLResponse)
 def index() -> HTMLResponse:
     """The demo page — one file, no build step, served from the same process.
@@ -111,6 +125,63 @@ def index() -> HTMLResponse:
         _INDEX.read_text(),
         headers={"X-Robots-Tag": "noindex, nofollow"},
     )
+
+
+# Served from a route rather than a data: URI in the page. The data URI form
+# was tried and silently failed — raw spaces in the SVG left the browser unable
+# to parse it, so it fell back to /favicon.ico and kept 404ing. A route cannot
+# fail that way, and a 404 in the console is what an interviewer sees the
+# moment they open devtools.
+_FAVICON = (
+    "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'>"
+    "<text y='13' font-size='13'>&#10003;</text></svg>"
+)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> Response:
+    return Response(_FAVICON, media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400"})
+
+
+@app.get("/v1/runs")
+def runs(limit: int = 25):
+    """Recent runs, newest first — the index the trace view needs to be usable.
+
+    Without it a run id is only reachable if you kept the response that
+    produced it, which makes "paste this and replay the session" true only for
+    the session you are already looking at.
+
+    Read from the trace files themselves rather than a separate index: the
+    files are the record, and a second store would be one more thing to keep
+    in sync with them.
+    """
+    if not SESSIONS_DIR.exists():
+        return {"runs": []}
+
+    files = sorted(
+        (p for p in SESSIONS_DIR.glob("*.jsonl") if not p.name.endswith(".messages.jsonl")),
+        key=lambda p: p.stat().st_mtime, reverse=True,
+    )[:max(1, min(limit, 100))]
+
+    out = []
+    for path in files:
+        events = _read_events(path)
+        if not events:
+            continue
+        calls = [e for e in events if e.get("event") == "tool_result"]
+        out.append({
+            "run_id": path.stem,
+            "at": events[0].get("ts"),
+            "outcome": next(
+                (e["event"] for e in reversed(events) if e.get("event") in _TERMINAL_EVENTS),
+                "incomplete",
+            ),
+            "tool_calls": len(calls),
+            "failed_tool_calls": sum(1 for e in calls if not e.get("ok")),
+            "cost_usd": sum(e.get("cost_usd") or 0 for e in events) or None,
+        })
+    return {"runs": out}
 
 
 @app.get("/health")
@@ -205,17 +276,7 @@ def trace(run_id: str):
     if not path.exists():
         return JSONResponse(status_code=404, content={"error": f"no trace for run {safe}"})
 
-    events = []
-    for line in path.read_text().splitlines():
-        if line.strip():
-            try:
-                events.append(json.loads(line))
-            except json.JSONDecodeError:
-                # A half-written final line is what a crash mid-run looks
-                # like. Serving the rest beats serving nothing, and the run
-                # ending without a final event is itself the finding.
-                continue
-
+    events = _read_events(path)
     calls = [e for e in events if e.get("event") == "tool_result"]
     return {
         "run_id": safe,
