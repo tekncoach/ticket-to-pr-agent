@@ -10,7 +10,9 @@
 #                 -d '{"message":"What time is it in Paris?"}'
 from __future__ import annotations
 
-from fastapi import FastAPI
+import uuid
+
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -19,6 +21,15 @@ from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
 from agent.runtime import AgentRuntime
 
 app = FastAPI(title="ticket-to-pr-agent", version="0.1.0")
+
+
+@app.middleware("http")
+async def request_id_mw(request: Request, call_next):
+    rid = request.headers.get("x-request-id", str(uuid.uuid4()))
+    request.state.request_id = rid
+    resp = await call_next(request)
+    resp.headers["x-request-id"] = rid
+    return resp
 
 # One shared AgentRuntime for the process lifetime, not one per request —
 # same reasoning as __post_init__'s own client caching: the SDK client
