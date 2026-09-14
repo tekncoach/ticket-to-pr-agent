@@ -179,3 +179,24 @@ def test_a_real_redirect_is_still_refused(tmp_path):
         "denied: shell operator rejected"
     assert _run(tmp_path, "cat a.txt 2>err.log").error_code == \
         "denied: shell operator rejected"
+
+
+@pytest.mark.parametrize("command", [
+    "git branch -a", "git tag -l", "git remote -v", "git config --list",
+])
+def test_listing_branches_and_tags_is_reading(tmp_path, command):
+    # `git branch -a` was refused in a real run for asking what branches
+    # exist. These verbs list when given no name and write when given one.
+    result = _run(tmp_path, command)
+    assert "not a read subcommand" not in (result.error_code or "")
+    assert "names something to change" not in (result.error_code or "")
+
+
+@pytest.mark.parametrize("command", [
+    "git branch feature-x", "git tag v1.0", "git config user.name bob",
+    "git remote add origin https://example.com/r.git",
+])
+def test_naming_something_turns_the_same_verb_into_a_write(tmp_path, command):
+    # The subcommand allowlist says which verbs; this says which shape. A
+    # positional argument after branch/tag/config is the thing being created.
+    assert "names something to change" in _run(tmp_path, command).error_code

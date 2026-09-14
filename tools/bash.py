@@ -38,7 +38,11 @@ ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd",
 # boundary is a subcommand allowlist rather than a blocklist of the dangerous
 # ones: a subcommand nobody has vetted is refused by default.
 _GIT_READ_SUBCOMMANDS = {"log", "diff", "show", "status", "blame", "ls-files",
-                         "describe", "shortlog", "rev-parse", "grep"}
+                         "describe", "shortlog", "rev-parse", "grep",
+                         # branch and tag LIST when given no name to create.
+                         # `git branch -a` was refused in a real run for
+                         # asking what branches exist, which is reading.
+                         "branch", "tag", "remote", "config"}
 
 # sed and awk are in the allowlist and are NOT read-only by nature: `sed -i`
 # edits in place, and awk can redirect to a file from inside its own program
@@ -115,6 +119,16 @@ def _refuse_write_invocation(stage: list[str]) -> ToolResult | None:
             ToolError(ErrorClass.DENIED, "awk program writes or shells out")))
     if stage[0] == "git":
         subcommand = next((a for a in stage[1:] if not a.startswith("-")), "")
+        # branch, tag and config read when listing and write when named: a
+        # positional argument after them is the thing being created or set.
+        # The subcommand allowlist says which verbs, this says which shape.
+        if subcommand in ("branch", "tag", "config", "remote"):
+            rest = [a for a in stage[2:] if not a.startswith("-")]
+            if rest:
+                return ToolResult(ok=False, error_code=str(ToolError(
+                    ErrorClass.DENIED,
+                    f"git {subcommand} {rest[0]} names something to change — "
+                    f"bash reads, open_pr writes")))
         if subcommand not in _GIT_READ_SUBCOMMANDS:
             return ToolResult(ok=False, error_code=str(ToolError(
                 ErrorClass.DENIED,
