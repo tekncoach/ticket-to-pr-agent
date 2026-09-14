@@ -225,3 +225,73 @@ def test_a_github_outage_on_the_queue_is_a_502_not_an_empty_queue(client):
         response = client.get("/v1/issues")
     assert response.status_code == 502
     assert "unavailable" in response.json()["error"]
+
+
+# --- the CI link ------------------------------------------------------------
+
+def _github_multi(routes):
+    """Answer each path with its own response, so a queue call that fetches
+    issues, pulls and then a workflow run can be exercised end to end."""
+    def build(tok):
+        def handler(request):
+            for fragment, response in routes.items():
+                if fragment in str(request.url):
+                    return response
+            return httpx.Response(200, json=[])
+        return ResilientClient("https://api.github.com", tok,
+                               transport=httpx.MockTransport(handler))
+    return patch("agent.tickets._build_client", build)
+
+
+def _pr(number=15, ref="agent/issue-14", sha="deadbeef", draft=True):
+    return {"number": number, "html_url": f"https://github.com/o/r/pull/{number}",
+            "draft": draft, "state": "open", "head": {"ref": ref, "sha": sha}}
+
+
+def test_a_pull_request_carries_its_ci_result_and_a_link_to_the_run():
+    # SPEC.md calls CI the oracle. The queue showed that a PR existed while
+    # staying silent on the only question that decides whether it was good.
+    routes = {
+        "/issues": httpx.Response(200, json=[_issue(14)]),
+        "/pulls": httpx.Response(200, json=[_pr()]),
+        "/actions/runs": httpx.Response(200, json={"workflow_runs": [
+            {"name": "CI", "status": "completed", "conclusion": "success",
+             "html_url": "https://github.com/o/r/actions/runs/123"}]}),
+    }
+    with _github_multi(routes):
+        row = list_issues().data[0]
+    assert row["pr"]["ci"] == {
+        "conclusion": "success", "name": "CI",
+        "url": "https://github.com/o/r/actions/runs/123",
+    }
+
+
+def test_a_run_still_going_reports_its_status_rather_than_a_null_conclusion():
+    routes = {
+        "/issues": httpx.Response(200, json=[_issue(14)]),
+        "/pulls": httpx.Response(200, json=[_pr()]),
+        "/actions/runs": httpx.Response(200, json={"workflow_runs": [
+            {"name": "CI", "status": "in_progress", "conclusion": None,
+             "html_url": "https://github.com/o/r/actions/runs/124"}]}),
+    }
+    with _github_multi(routes):
+        assert list_issues().data[0]["pr"]["ci"]["conclusion"] == "in_progress"
+
+
+def test_no_workflow_run_is_none_rather_than_an_invented_pending():
+    # A workflow that never fired and one still running are different facts,
+    # and only one of them is worth waiting for.
+    routes = {
+        "/issues": httpx.Response(200, json=[_issue(14)]),
+        "/pulls": httpx.Response(200, json=[_pr()]),
+        "/actions/runs": httpx.Response(200, json={"workflow_runs": []}),
+    }
+    with _github_multi(routes):
+        assert list_issues().data[0]["pr"]["ci"] is None
+
+
+def test_an_issue_with_no_pull_request_asks_github_nothing_about_ci():
+    routes = {"/issues": httpx.Response(200, json=[_issue(14)]),
+              "/pulls": httpx.Response(200, json=[])}
+    with _github_multi(routes):
+        assert list_issues().data[0]["pr"] is None

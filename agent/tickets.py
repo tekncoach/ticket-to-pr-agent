@@ -97,9 +97,44 @@ def list_issues(ready_only: bool = False) -> ToolResult:
         summary["pr"] = {
             "number": pr.get("number"), "url": pr.get("html_url"),
             "state": "draft" if pr.get("draft") else pr.get("state"),
+            # The CI result, linked. SPEC.md calls CI the oracle — "the agent's
+            # job is to converge to green CI" — and until now the queue showed
+            # that a PR existed while staying silent on the only question that
+            # decides whether it was any good. A green badge is a claim; a link
+            # to the run that produced it is evidence.
+            "ci": _ci_for(token, (pr.get("head") or {}).get("sha")),
         } if pr else None
         rows.append(summary)
     return ToolResult(ok=True, data=rows)
+
+
+def _ci_for(token: str, sha: str | None) -> dict | None:
+    """The CI run for a commit: its conclusion and a link to it.
+
+    None when there is no run rather than a fabricated "pending" — a workflow
+    that never fired and one still running are different facts, and only one
+    of them is worth waiting for.
+    """
+    if not sha:
+        return None
+    with _build_client(token) as client:
+        result = client.request(
+            "GET", f"/repos/{REPO}/actions/runs",
+            headers=GITHUB_HEADERS, params={"head_sha": sha, "per_page": 10},
+        )
+    if not result.ok or not isinstance(result.data, dict):
+        return None
+    runs = [r for r in result.data.get("workflow_runs") or []
+            if r.get("name", "").upper() == "CI"] or (result.data.get("workflow_runs") or [])
+    if not runs:
+        return None
+    run = runs[0]
+    return {
+        # conclusion is null while a run is in progress; status carries that.
+        "conclusion": run.get("conclusion") or run.get("status"),
+        "url": run.get("html_url"),
+        "name": run.get("name"),
+    }
 
 
 def check_ready(issue_id: int) -> ToolResult:

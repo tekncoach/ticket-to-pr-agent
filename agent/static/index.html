@@ -177,6 +177,9 @@ async function boot() {
            rel="noopener">#${esc(i.number)} ${esc(i.title)}</a>
            <span>${i.pr ? `<a class="badge ok-badge" href="${esc(i.pr.url)}" target="_blank"
              rel="noopener">PR #${esc(i.pr.number)} ${esc(i.pr.state)}</a> ` : ""}
+           ${i.pr?.ci ? `<a class="badge ${i.pr.ci.conclusion === "success" ? "ok-badge" : "off"}"
+             href="${esc(i.pr.ci.url)}" target="_blank" rel="noopener"
+             title="the run itself, not a badge">CI ${esc(i.pr.ci.conclusion)}</a> ` : ""}
            <span class="badge ${i.ready ? "on" : ""}">${i.ready ? esc(q.label) : "not labelled"}</span>
            <button data-issue="${esc(i.number)}">Run</button></span></div>`).join("")
       : `<p class="empty">No open issues on this repository.</p>`;
