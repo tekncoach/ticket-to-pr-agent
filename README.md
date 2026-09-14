@@ -4,7 +4,7 @@ A coding agent that turns a labeled GitHub Issue into a tested, CI-ready pull re
 
 [![CI](https://github.com/tekncoach/ticket-to-pr-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/tekncoach/ticket-to-pr-agent/actions/workflows/ci.yml) ![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue) ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-**Built:** the whole loop — ticket intake, codebase exploration, file editing, local test runs, draft PRs, issue comments, hybrid RAG with citation enforcement, and a clickable demo page. **Not built:** CI status polling, and the agent has not yet completed a ticket end to end — see [Status](#status).
+**Built:** the whole loop, and it has run end to end on a real ticket — [issue #14 → draft PR #15](https://github.com/tekncoach/liberty-rider-myroadtrips/pull/15), 181 tests green. **Not built:** CI status polling. See [First completed run](#first-completed-run) and [Status](#status).
 
 ## What it does
 
@@ -75,6 +75,26 @@ Three minutes, four clicks, on the page at `/`. Each one is there to fail differ
 
 Then click any past run in **Recent runs**. The trace replays: the system prompt it was given, a timeline of every tool call, each one expandable onto its arguments and its result, the typed error class where something failed, and the sentence the agent ended on. That is the point of the whole thing — a bad answer in front of you becomes a session you can open and read, rather than a shrug.
 
+## First completed run
+
+Issue [#14](https://github.com/tekncoach/liberty-rider-myroadtrips/issues/14) → draft PR [#15](https://github.com/tekncoach/liberty-rider-myroadtrips/pull/15), run `fadedace`, 145 events, $1.02 on `claude-sonnet-5`.
+
+| | |
+|---|---|
+| Read the ticket | `fetch_ticket` |
+| Located the patterns it named | `bash`, `str_replace_based_edit_tool` |
+| Wrote the endpoint | 73 lines in `app.py`, following `RIDE_LIST_COLS`, `_merged_ride_dict` and `_merge_members_map` as the ticket asked |
+| Wrote the tests | six, in `tests/test_stats.py` |
+| Ran them | 5 passed, **1 failed** — `test_stats_counts_merged_ride_once` |
+| Fixed its own failure | the merged-ride double-count rule |
+| Verified independently, afterwards | **181 passed, 0 failed** |
+
+The docstring it wrote for the endpoint explains the rule rather than restating the code:
+
+> a merged ride's numbers already live on the ride that absorbed it, so counting both would double every merge
+
+It did **not** open the PR itself: the anti-spin guard stopped it one call short, because `run_tests` with identical arguments looked like a repeat when it was the edit-test loop doing its job. That guard now lets a tool declare itself repeatable, and the PR was opened from the work already on disk.
+
 ## Cost and limits
 
 Measured, not estimated — from the traces in `tmp/sessions/`, on `claude-haiku-4-5`:
@@ -88,7 +108,8 @@ Measured, not estimated — from the traces in `tmp/sessions/`, on `claude-haiku
 
 **Known limits, named because they are the questions an interviewer asks:**
 
-- **The agent has never completed a ticket end to end.** Every run demonstrated so far is a knowledge-base question or a refusal. The loop is built and each tool is tested; the whole path has not run once on a real ticket.
+- **One completed ticket, not a track record.** The loop has run end to end once, on one narrow ticket, and took eight attempts to get there. A first-attempt CI-pass rate is a Day 7-9 measurement, not a claim this project can make yet.
+- **Six of those eight blockers were our own guards**, not the model: `sed` refused outright, globs unexpanded, `git log` denied, a fruitless `grep` reported as a tool failure, and — the worst — an auth-symbol denylist that listed `get_session_user`, the dependency *every* protected endpoint declares, so writing any protected endpoint was blocked. A guard has to name what must not be **altered**, not what may not be **called**; one that blocks correct work is one that gets switched off rather than fixed. Each is now a fix with a regression test, and the whole arc is in commit `129ab0c`.
 - **Read-then-write is not atomic.** Two concurrent runs could both pass the duplicate check before either writes. Safe today only because runs are serialised — a documented assumption with its blast radius in [`docs/resilience.md`](docs/resilience.md), not a lock.
 - **Nothing resumes.** A run that stops re-derives work already done rather than picking it up.
 - **The corpus is not in the repository.** It cites sources that are not ours to redistribute, so `data/kb/` is mounted, not baked. Without it `search_kb` fails — typed as `unavailable`, with the agent saying so.
@@ -198,7 +219,7 @@ Named forks, not built — one file per topic in [`docs/research/`](docs/researc
 
 Proof of concept, under active development. Six of the seven specified tools are built and verified against a live target repo and a live GitHub API — including the write path, which was exercised against a real issue and proved not to duplicate ([`docs/manual_scenarios.md`](docs/manual_scenarios.md), scenario 8). `get_ci_status` is specified and not built; it needs a pushed PR to poll.
 
-The honest gap: **the agent has not yet run a ticket from issue to pull request.** Each tool works and is tested; the whole loop has not been exercised on a real ticket, because no issue currently carries `agent:ready` — the label is a human decision and it has not been made yet.
+The loop has run from issue to pull request on a real ticket — see [First completed run](#first-completed-run). Once, on one narrow ticket: enough to say the path works, not enough to quote a success rate.
 
 CI (`.github/workflows/ci.yml`) runs `make test` on every push and pull request — no secrets required, every test hermetic. `make eval` is deliberately not in CI: it calls a real model and costs money per run.
 
