@@ -22,6 +22,7 @@ from __future__ import annotations
 import re
 import shlex
 import subprocess
+import time
 
 from agent.config import WORKSPACE
 from agent.errors import ErrorClass, ToolError
@@ -57,8 +58,16 @@ _GIT_READ_SUBCOMMANDS = {"log", "diff", "show", "status", "blame", "ls-files",
 # one, because the capability it withholds is exactly the dangerous half.
 _WRITE_FLAGS = {"-i", "--in-place"}
 _AWK_WRITE_RE = re.compile(r"(^|[^>])>[^>]|\bprintf?\s*>|\bsystem\s*\(")
-# "|" removed on purpose: it's handled structurally below, not as a reject.
-DISALLOWED_OPERATORS = ("&&", "||", ";", "`", "$(", ">", "<", "\n")
+# What remains genuinely dangerous, and why each one does. Command
+# substitution runs an arbitrary program whose name never passes the
+# allowlist, and file redirection writes — those are capabilities. The
+# chaining operators are NOT: `a && b` runs two commands that each go through
+# the same executable allowlist and the same per-argument confinement as a
+# single one, so chaining adds sequencing, not reach. They were rejected
+# because Anthropic's guidance says a blocklist is insufficient — but this is
+# an allowlist, and the argument does not transfer.
+DISALLOWED_OPERATORS = ("`", "$(", ">", "<", "\n")
+CHAIN_OPERATORS = ("&&", "||", ";")
 
 # Stderr redirections, stripped before the operator check rather than
 # rejected. `2>/dev/null` and `2>&1` cannot write a file and cannot run
@@ -79,7 +88,33 @@ _STDERR_REDIRECTS = ("2>/dev/null", "2>&1", "2> /dev/null")
 _CD_PREFIX_RE = re.compile(r"""^\s*cd\s+(?P<path>"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*(?P<rest>.+)$""",
                            re.DOTALL)
 MAX_PIPELINE_STAGES = 3
+# Chained segments per call. A bound rather than a boundary: the guards that
+# matter run on every segment regardless, this just keeps one call from
+# becoming a script.
+MAX_CHAIN_SEGMENTS = 6
 _TIMEOUT_S = 10
+
+
+def _split_chain(argv: list[str]) -> list[tuple[str, list[str]]] | None:
+    """[(operator that PRECEDES this segment, its tokens)], "" for the first.
+
+    None on an empty segment — a leading, trailing or doubled operator.
+    """
+    chain: list[tuple[str, list[str]]] = [("", [])]
+    for tok in argv:
+        if tok in CHAIN_OPERATORS:
+            chain.append((tok, []))
+        else:
+            chain[-1][1].append(tok)
+    return None if any(not tokens for _, tokens in chain) else chain
+
+
+def _should_run(operator: str, previous_code: int | None) -> bool:
+    """Shell semantics: && needs the previous to have succeeded, || needs it
+    to have failed, ; runs regardless."""
+    if previous_code is None or operator == ";":
+        return True
+    return previous_code == 0 if operator == "&&" else previous_code != 0
 
 
 def _split_pipeline(argv: list[str]) -> list[list[str]] | None:
@@ -129,16 +164,29 @@ def _refuse_write_invocation(stage: list[str]) -> ToolResult | None:
         return ToolResult(ok=False, error_code=str(
             ToolError(ErrorClass.DENIED, "awk program writes or shells out")))
     if stage[0] == "git":
-        subcommand = next((a for a in stage[1:] if not a.startswith("-")), "")
+        # -C and -c take a VALUE, so the first non-dash argument after them is
+        # that value, not the subcommand: `git -C . log` read as `git .`.
+        # Same slip as open_pr's error message once made with `git -c`.
+        rest, skip = [], False
+        for arg in stage[1:]:
+            if skip:
+                skip = False
+                continue
+            if arg in ("-C", "-c"):
+                skip = True
+                continue
+            rest.append(arg)
+        subcommand = next((a for a in rest if not a.startswith("-")), "")
+        stage_after_subcommand = rest[rest.index(subcommand) + 1:] if subcommand in rest else []
         # branch, tag and config read when listing and write when named: a
         # positional argument after them is the thing being created or set.
         # The subcommand allowlist says which verbs, this says which shape.
         if subcommand in ("branch", "tag", "config", "remote"):
-            rest = [a for a in stage[2:] if not a.startswith("-")]
-            if rest:
+            named = [a for a in stage_after_subcommand if not a.startswith("-")]
+            if named:
                 return ToolResult(ok=False, error_code=str(ToolError(
                     ErrorClass.DENIED,
-                    f"git {subcommand} {rest[0]} names something to change — "
+                    f"git {subcommand} {named[0]} names something to change — "
                     f"bash reads, open_pr writes")))
         if subcommand not in _GIT_READ_SUBCOMMANDS:
             return ToolResult(ok=False, error_code=str(ToolError(
@@ -146,6 +194,38 @@ def _refuse_write_invocation(stage: list[str]) -> ToolResult | None:
                 f"git {subcommand or '(none)'} is not a read subcommand — "
                 f"open_pr owns branching, committing and pushing")))
     return None
+
+
+def _run_pipeline(stages: list[list[str]], timeout: float) -> tuple[str, int | None]:
+    """(combined output, exit code). Exit code None means it timed out."""
+    procs: list[subprocess.Popen] = []
+    try:
+        upstream_stdout = None
+        for stage in stages:
+            proc = subprocess.Popen(
+                stage,
+                shell=False,  # argv form, not a shell string — no operator injection
+                cwd=WORKSPACE,
+                stdin=upstream_stdout,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            if upstream_stdout is not None:
+                upstream_stdout.close()  # our end; the child now owns the read side
+            upstream_stdout = proc.stdout
+            procs.append(proc)
+
+        stdout, stderr = procs[-1].communicate(timeout=timeout)
+        for upstream in procs[:-1]:
+            upstream.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        for proc in procs:
+            proc.kill()
+        return "", None
+
+    # tool contract: combined stdout+stderr
+    return (stdout or "") + (stderr or ""), procs[-1].returncode
 
 
 def _handler(arguments: dict) -> ToolResult:
@@ -172,83 +252,84 @@ def _handler(arguments: dict) -> ToolResult:
         return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.DENIED, "shell operator rejected")))
 
     try:
-        argv = shlex.split(command)
+        # punctuation_chars makes ";" its own token — plain shlex.split leaves
+        # it stuck to the word beside it ("ls;" as an executable name) — while
+        # anything quoted stays one token, so grep -E "x|y" keeps its pattern.
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        argv = list(lexer)
     except ValueError as exc:  # unbalanced quotes, e.g.
         return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, str(exc))))
 
-    stages = _split_pipeline(argv)
-    if stages is None:
-        return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, "empty pipeline stage")))
-    if len(stages) > MAX_PIPELINE_STAGES:
+    chain = _split_chain(argv)
+    if chain is None:
         return ToolResult(ok=False, error_code=str(
-            ToolError(ErrorClass.VALIDATION, f"more than {MAX_PIPELINE_STAGES} pipeline stages")))
-    for stage in stages:
-        if stage[0] in ("sed", "awk", "git"):
-            refusal = _refuse_write_invocation(stage)
-            if refusal:
-                return refusal
-        if stage[0] not in ALLOWED_EXECUTABLES:
+            ToolError(ErrorClass.VALIDATION, "empty command around a chaining operator")))
+    if len(chain) > MAX_CHAIN_SEGMENTS:
+        return ToolResult(ok=False, error_code=str(ToolError(
+            ErrorClass.VALIDATION, f"more than {MAX_CHAIN_SEGMENTS} chained commands")))
+
+    # Validate EVERY segment before running ANY of them. Checking as we go
+    # would let `ls && rm -rf /` print a directory listing before refusing —
+    # a refusal that arrives after the first half already ran is not a refusal.
+    validated = []
+    for _, segment in chain:
+        stages = _split_pipeline(segment)
+        if stages is None:
             return ToolResult(ok=False, error_code=str(
-                ToolError(ErrorClass.DENIED, f"executable not allowed: {stage[0]}")))
-        # Globs, expanded here because there is no shell to do it. argv goes
-        # straight to subprocess, so `tests/*.py` arrived as a literal
-        # filename and grep exited 2 — a silent failure on an idiom every
-        # agent reaches for. Expansion is ours, so every result still goes
-        # through the same workspace check below; a pattern that matches
-        # nothing is left as-is, which is what a shell with nullglob off does.
-        stage[1:] = _expand_globs(stage[1:])
-
-        for arg in stage[1:]:
-            # Every argument, not just path-looking ones: a flag or pattern
-            # ("-la", "apple|banana") resolves harmlessly inside the
-            # workspace, so there is no need to guess which args are paths.
-            if resolve_within_workspace(WORKSPACE, arg) is None:
-                return ToolResult(ok=False, error_code=str(
-                    ToolError(ErrorClass.DENIED, f"argument escapes workspace: {arg}")))
-
-    procs: list[subprocess.Popen] = []
-    try:
-        upstream_stdout = None
+                ToolError(ErrorClass.VALIDATION, "empty pipeline stage")))
+        if len(stages) > MAX_PIPELINE_STAGES:
+            return ToolResult(ok=False, error_code=str(
+                ToolError(ErrorClass.VALIDATION, f"more than {MAX_PIPELINE_STAGES} pipeline stages")))
         for stage in stages:
-            proc = subprocess.Popen(
-                stage,
-                shell=False,  # argv form, not a shell string — no operator injection
-                cwd=WORKSPACE,
-                stdin=upstream_stdout,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-            )
-            if upstream_stdout is not None:
-                upstream_stdout.close()  # our end; the child now owns the read side
-            upstream_stdout = proc.stdout
-            procs.append(proc)
+            if stage[0] in ("sed", "awk", "git"):
+                refusal = _refuse_write_invocation(stage)
+                if refusal:
+                    return refusal
+            if stage[0] not in ALLOWED_EXECUTABLES:
+                return ToolResult(ok=False, error_code=str(
+                    ToolError(ErrorClass.DENIED, f"executable not allowed: {stage[0]}")))
+            # Globs, expanded here because there is no shell to do it. argv
+            # goes straight to subprocess, so `tests/*.py` arrived as a literal
+            # filename and grep exited 2 — a silent failure on an idiom every
+            # agent reaches for. Expansion is ours, so every result still goes
+            # through the same workspace check below; a pattern that matches
+            # nothing is left as-is, which is what a shell with nullglob off does.
+            stage[1:] = _expand_globs(stage[1:])
 
-        stdout, stderr = procs[-1].communicate(timeout=_TIMEOUT_S)
-        for upstream in procs[:-1]:
-            upstream.wait(timeout=_TIMEOUT_S)
-    except subprocess.TimeoutExpired:
-        for proc in procs:
-            proc.kill()
-        return ToolResult(ok=False, error_code=str(
-            ToolError(ErrorClass.TIMEOUT, f"command exceeded {_TIMEOUT_S}s")))
+            for arg in stage[1:]:
+                # Every argument, not just path-looking ones: a flag or pattern
+                # ("-la", "apple|banana") resolves harmlessly inside the
+                # workspace, so there is no need to guess which args are paths.
+                if resolve_within_workspace(WORKSPACE, arg) is None:
+                    return ToolResult(ok=False, error_code=str(
+                        ToolError(ErrorClass.DENIED, f"argument escapes workspace: {arg}")))
+        validated.append(stages)
 
-    returncode = procs[-1].returncode
-    output = (stdout or "") + (stderr or "")  # tool contract: combined stdout+stderr
-    if returncode != 0:
+    output, returncode = "", None
+    deadline = time.monotonic() + _TIMEOUT_S
+    for (operator, _), stages in zip(chain, validated):
+        if not _should_run(operator, returncode):
+            continue
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return ToolResult(ok=False, error_code=str(
+                ToolError(ErrorClass.TIMEOUT, f"command exceeded {_TIMEOUT_S}s")))
+        segment_output, returncode = _run_pipeline(stages, remaining)
+        if returncode is None:  # timed out
+            return ToolResult(ok=False, error_code=str(
+                ToolError(ErrorClass.TIMEOUT, f"command exceeded {_TIMEOUT_S}s")))
+        output += segment_output
+
+    if returncode not in (0, None):
         # A non-zero exit from a read-only command is a RESULT, not a tool
-        # failure — grep exiting 1 means "no match", which is an answer. This
-        # was VALIDATION, with the imprecision named in the code and left for
-        # later; later arrived when two consecutive fruitless greps tripped
-        # the repeated-failure guard and killed a run that was working fine.
-        #
-        # Same reasoning as tools/run_tests.py's red suite: agent/runtime.py
-        # discards ToolResult.data when ok is False, so reporting an empty
-        # grep as a failure throws away the very output that says it was
-        # empty. ok=False stays for the tool itself failing — a rejected
-        # operator, an escape, a timeout.
-        return ToolResult(ok=True, data=f"{output}(exit {returncode}: no output)"
-                          if not output.strip() else output)
+        # failure — grep exiting 1 means "no match", which is an answer.
+        # agent/runtime.py discards ToolResult.data when ok is False, so
+        # reporting an empty grep as a failure throws away the very output
+        # that says it was empty. ok=False stays for the tool itself failing:
+        # a rejected operator, an escape, a timeout.
+        return ToolResult(ok=True, data=output if output.strip()
+                          else f"(exit {returncode}: no output)")
     return ToolResult(ok=True, data=output)
 
 
