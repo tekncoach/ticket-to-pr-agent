@@ -284,6 +284,7 @@ def test_the_parallel_cap_still_refuses_rather_than_dropping(monkeypatch):
     # Raised from 3 to 6 after watching Sonnet batch four reads routinely.
     # What must not change: a call past the cap gets an error tool_result, not
     # silence — dropping one trains the model to stop batching at all.
-    from agent.runtime import AgentRuntime as R
-    assert R(model="claude-haiku-4-5", tools={}, system="s",
-             logger=NullSink()).max_parallel_tool_calls == 6
+    monkeypatch.setenv("LLM_API_KEY", "sk-ant-fake-key-for-tests")
+    runtime = AgentRuntime(model="claude-haiku-4-5", tools={}, system="s",
+                           logger=NullSink())
+    assert runtime.max_parallel_tool_calls == 6
