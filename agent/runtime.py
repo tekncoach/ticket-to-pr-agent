@@ -31,6 +31,16 @@ ADAPTIVE_THINKING_MODELS = {"claude-opus-5", "claude-sonnet-5", "claude-fable-5"
 # trying again.
 LLM_MAX_RETRIES = 2
 
+# Context window per model, for occupancy. Spend and occupancy are different
+# numbers and only one of them is a risk: gen_ai.usage.input_tokens bills every
+# turn and only grows, so an agent that burned 100k tokens may be sitting in a
+# 15k window. context_tokens is how full the window actually was.
+CONTEXT_WINDOWS = {
+    "claude-haiku-4-5": 200_000,
+    "claude-sonnet-5": 200_000,
+    "claude-opus-5": 200_000,
+}
+
 
 def _classify_api_error(exc: anthropic.APIError) -> ErrorClass:
     if isinstance(exc, anthropic.AuthenticationError):
@@ -162,6 +172,13 @@ class AgentRuntime:
             trace.append(event)
             self.logger.emit(run_id, event)
 
+        # The system prompt shapes every turn and was recorded nowhere, so a
+        # replayed run could not show what the agent had been told.
+        emit({
+            "event": "system_instructions", "run_id": run_id, "ts": _now_iso(),
+            "turn": 0, "gen_ai.system_instructions": self.system,
+        })
+
         # A repeated identical tool call is a spin, not progress; this set is
         # the loop's only memory of that, scoped to this run. A legitimate
         # polling tool (get_ci_status) would need an exception — not built.
@@ -233,6 +250,12 @@ class AgentRuntime:
                 # unexploited caching win.
                 "gen_ai.usage.cache_write.input_tokens": usage.cache_creation_input_tokens,
                 "gen_ai.usage.cache_read.input_tokens": usage.cache_read_input_tokens,
+                # Occupancy, not spend: how full the window was on this turn.
+                # Cache reads count — cached prompt is still prompt.
+                "context_tokens": (usage.input_tokens + usage.output_tokens
+                                   + (usage.cache_read_input_tokens or 0)
+                                   + (usage.cache_creation_input_tokens or 0)),
+                "context_window": CONTEXT_WINDOWS.get(self.model),
                 "service_tier": usage.service_tier,
                 "cost_usd": _cost_usd(self.model, usage.input_tokens, usage.output_tokens),
                 "stop_reason": resp.stop_reason,
@@ -272,6 +295,7 @@ class AgentRuntime:
                     "gen_ai.tool.call.arguments": block.input,
                 })
                 tool_t0 = time.time()
+                tool_started_at = _now_iso()
 
                 signature = (block.name, json.dumps(block.input, sort_keys=True))
                 if signature in seen_calls:
@@ -324,6 +348,12 @@ class AgentRuntime:
                     "gen_ai.operation.name": "execute_tool",
                     "gen_ai.tool.name": block.name,
                     "gen_ai.tool.call.id": block.id,
+                    # A tool call is the one event that spans time, so it
+                    # carries both ends. Every other event is a point, and
+                    # laying a timeline out from a duration alone means
+                    # guessing where each bar starts.
+                    "started_at": tool_started_at,
+                    "ended_at": _now_iso(),
                     # The result the tool produced, which the events stream did
                     # not carry at all — only whether it succeeded. Reading a
                     # past run meant seeing that search_kb worked and never

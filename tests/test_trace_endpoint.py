@@ -96,7 +96,7 @@ def test_replaying_a_run_returns_its_events_and_a_summary(client):
     assert len(body["events"]) == 7
     assert body["summary"] == {
         "turns": 2, "tool_calls": 2, "failed_tool_calls": 1,
-        "cost_usd": pytest.approx(0.0031), "outcome": "final",
+        "cost_usd": pytest.approx(0.0031), "context_pct": None, "outcome": "final",
     }
 
 
@@ -260,3 +260,24 @@ def test_a_trace_with_no_conversation_still_replays(client):
     body = api.get("/v1/trace/dd44").json()
     assert body["asked"] is None and body["answer"] is None
     assert body["summary"]["outcome"] == "final"
+
+
+def test_the_summary_reports_window_occupancy_not_accumulated_spend(client):
+    # Two different numbers, and only one is a ceiling you can hit:
+    # input_tokens bills every turn and only grows, context_tokens is how full
+    # the window actually was on the last model call.
+    api, sessions = client
+    _write_trace(sessions, "ee55", [
+        {"event": "llm_call", "turn": 0, "context_tokens": 3000, "context_window": 200_000},
+        {"event": "llm_call", "turn": 1, "context_tokens": 60_000, "context_window": 200_000},
+        {"event": "final", "turn": 1},
+    ])
+    assert api.get("/v1/trace/ee55").json()["summary"]["context_pct"] == 30
+
+
+def test_a_run_without_occupancy_reports_none_rather_than_zero(client):
+    # Traces written before the columns existed draw no bar rather than a
+    # misleading empty one.
+    api, sessions = client
+    _write_trace(sessions, "ff66", [{"event": "llm_call", "turn": 0}, {"event": "final", "turn": 0}])
+    assert api.get("/v1/trace/ff66").json()["summary"]["context_pct"] is None

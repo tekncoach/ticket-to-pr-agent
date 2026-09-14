@@ -325,6 +325,14 @@ def trace(run_id: str):
             "tool_calls": len(calls),
             "failed_tool_calls": sum(1 for e in calls if not e.get("ok")),
             "cost_usd": sum(e.get("cost_usd") or 0 for e in events) or None,
+            # Occupancy at the last model call, not the sum of every turn:
+            # spend accumulates, the window does not.
+            "context_pct": next(
+                (round(100 * e["context_tokens"] / e["context_window"])
+                 for e in reversed(events)
+                 if e.get("context_tokens") and e.get("context_window")),
+                None,
+            ),
             "outcome": next(
                 (e["event"] for e in reversed(events)
                  if e.get("event") in _TERMINAL_EVENTS),
