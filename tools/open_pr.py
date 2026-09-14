@@ -33,6 +33,7 @@ import subprocess
 
 from agent.config import REPO, WORKSPACE, shadow_mode
 from agent.errors import ErrorClass, ToolError
+from agent.tickets import check_ready
 from agent.runtime import Tool, ToolResult
 from agent.secrets_redaction import redact_secrets
 from tools.http_client import ResilientClient
@@ -124,6 +125,18 @@ def _handler(arguments: dict) -> ToolResult:
         # Not a failure of this tool, but there is nothing to propose. Saying
         # so plainly beats opening an empty PR.
         return _fail(ErrorClass.VALIDATION, "the working tree has no changes to open a PR for")
+
+    # The contract, re-read immediately before the irreversible act. /v1/run
+    # checks it once at the start, and a run takes minutes: a human who
+    # removes the label or closes the issue mid-run has withdrawn consent, and
+    # a gate only consulted at the door is not a human-in-the-loop gate.
+    #
+    # Deliberately NOT done in comment_on_ticket: that is how the agent
+    # reports, including reporting that it stopped. Gating the report as well
+    # would make withdrawal silent, which is worse than the write it prevents.
+    consent = check_ready(issue_id)
+    if not consent.ok:
+        return ToolResult(ok=False, error_code=consent.error_code)
 
     branch = branch_for(issue_id)
     dry_run = bool(arguments.get("dry_run")) or shadow_mode()

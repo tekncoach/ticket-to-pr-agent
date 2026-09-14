@@ -86,8 +86,20 @@ def _call(arguments, git=None, github=None):
             "https://api.github.com", token, transport=httpx.MockTransport(github.handler),
         )
 
+    # tickets._build_client too: open_pr re-reads the agent:ready contract
+    # immediately before writing, so a test that only mocks open_pr's client
+    # sends a real request from inside the tool under test.
+    def consenting(token):
+        return ResilientClient(
+            "https://api.github.com", token,
+            transport=httpx.MockTransport(lambda r: httpx.Response(200, json={
+                "number": 14, "state": "open", "html_url": "https://github.com/o/r/issues/14",
+                "title": "t", "labels": [{"name": "agent:ready"}]})),
+        )
+
     with patch("tools.open_pr.subprocess.run", side_effect=git), \
          patch("tools.open_pr._build_client", build), \
+         patch("agent.tickets._build_client", consenting), \
          patch("tools.http_client.time.sleep"):
         return open_pr.handler(arguments), git, github
 
@@ -230,3 +242,48 @@ def test_absent_token_is_an_auth_error(monkeypatch):
 
 def test_it_is_declared_as_a_write_so_the_runtime_gate_sees_it():
     assert open_pr.side_effect is True
+
+
+# --- consent, re-read before the write --------------------------------------
+
+def _withdrawn(issue):
+    """agent.tickets answering that consent is gone."""
+    def build(token):
+        return ResilientClient("https://api.github.com", token,
+                               transport=httpx.MockTransport(lambda r: httpx.Response(200, json=issue)))
+    return patch("agent.tickets._build_client", build)
+
+
+@pytest.mark.parametrize("issue, expected", [
+    ({"number": 14, "state": "open", "labels": [{"name": "bug"}]}, "does not carry agent:ready"),
+    ({"number": 14, "state": "closed", "labels": [{"name": "agent:ready"}]}, "is closed"),
+])
+def test_consent_withdrawn_mid_run_stops_the_write(issue, expected):
+    # /v1/run checks the contract once at the door, and a run takes minutes. A
+    # human who removes the label or closes the issue in that window has
+    # withdrawn consent, and a gate consulted only at the start is not a
+    # human-in-the-loop gate.
+    git = FakeGit()
+    github = FakeGitHub()
+
+    def build(token):
+        return ResilientClient("https://api.github.com", token,
+                               transport=httpx.MockTransport(github.handler))
+
+    with _withdrawn(issue), patch("tools.open_pr.subprocess.run", side_effect=git), \
+         patch("tools.open_pr._build_client", build), patch("tools.http_client.time.sleep"):
+        result = open_pr.handler({"issue_id": 14, "title": "t"})
+
+    assert not result.ok
+    assert expected in result.error_code
+    assert not git.ran("push"), "nothing is pushed once consent is gone"
+    assert not any(r.method == "POST" for r in github.requests)
+
+
+def test_reporting_is_not_gated_the_way_writing_is():
+    # comment_on_ticket is how the agent reports, including reporting that it
+    # stopped. Gating the report as well would make a withdrawal silent, which
+    # is worse than the write it prevents.
+    import inspect
+    from tools import comment_on_ticket as reporter
+    assert "check_ready" not in inspect.getsource(reporter)

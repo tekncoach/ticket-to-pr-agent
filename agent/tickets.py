@@ -26,9 +26,6 @@ GITHUB_HEADERS = {
 # SPEC.md's Trigger section: "That label is the contract — no label, no run."
 # It was stated there and enforced nowhere until this file.
 READY_LABEL = "agent:ready"
-# Imported rather than duplicated: the branch name IS the link between an
-# issue and the pull request the agent opened for it.
-from tools.open_pr import branch_for  # noqa: E402
 MAX_QUEUE = 20
 
 
@@ -83,6 +80,12 @@ def list_issues(ready_only: bool = False) -> ToolResult:
             "GET", f"/repos/{REPO}/pulls", headers=GITHUB_HEADERS,
             params={"state": "all", "per_page": MAX_QUEUE},
         )
+
+    # Imported here rather than at module scope: tools/open_pr.py imports
+    # check_ready from this module, and the branch name is the only thing
+    # needed the other way. A lazy import beats duplicating the naming rule,
+    # which is the one string linking an issue to its pull request.
+    from tools.open_pr import branch_for
 
     by_branch = {}
     if prs.ok and isinstance(prs.data, list):
@@ -151,6 +154,12 @@ def check_ready(issue_id: int) -> ToolResult:
     if not result.ok:
         return result
     issue = result.data or {}
+    if issue.get("state") == "closed":
+        return _fail(
+            ErrorClass.DENIED,
+            f"issue #{issue_id} is closed — someone decided it was done or "
+            f"not wanted while this was running",
+        )
     labels = [label.get("name") for label in issue.get("labels") or []]
     if READY_LABEL not in labels:
         # DENIED, not NOT_FOUND: the issue exists and the answer is no. A
