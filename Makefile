@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval docker-up
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -49,6 +49,12 @@ eval:
 
 # Build and run the service in Docker. The compose file does not exist
 # yet — this target is a placeholder until deployment is built out.
+# --env-file is not optional: compose looks for .env next to the compose file
+# (deploy/), not at the repo root, so without it every secret interpolates to
+# an empty string and the container comes up with no key at all.
 docker-up:
-	docker compose -f deploy/docker-compose.yml up --build
+	docker compose --env-file .env -f deploy/docker-compose.yml up --build
+
+docker-down:
+	docker compose --env-file .env -f deploy/docker-compose.yml down
 
