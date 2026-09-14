@@ -3,7 +3,8 @@
 One container on one VM. No orchestration, because there is one service: the
 corpus is a sqlite file and the target repo is baked into the image.
 
-Live at **https://ticket-to-pr-agent.exe.xyz** (exe.dev, `fra`).
+Live at **https://ticket-to-pr-agent.exe.xyz** (exe.dev, `fra`) — **closed by
+default**; see [Access](#access).
 
 ## What has to be carried across, and why
 
@@ -57,10 +58,13 @@ Three states, from tightest:
 (cd $CLI && uv run exedev share set-private ticket-to-pr-agent)
 ```
 
-It is **public** today, because a tokenised link needs a browser to complete
-its redirect and a reviewer fetching the URL with curl gets a 401. Every page
-is served `X-Robots-Tag: noindex, nofollow`, so public means reachable, not
-indexed. Set it private again when the review is done.
+It is **private** today. It was public for one review — a tokenised link
+needs a browser to complete its redirect, so a reviewer fetching the URL with
+curl gets a 401, and public was what made it gradeable. Every page is served
+`X-Robots-Tag: noindex, nofollow`, so public meant reachable, not indexed.
+
+Open it for a review, close it after. `curl -o /dev/null -w '%{http_code}'` on
+the root says which state it is in: 200 open, 307 closed.
 
 ## The kill switch
 
@@ -74,6 +78,27 @@ curl -s https://ticket-to-pr-agent.exe.xyz/health   # shadow_mode confirms it to
 ```
 
 `/health` is how you check it actually applied, rather than assuming.
+
+## The image goes stale on purpose
+
+`TARGET_REF` pins the target repo's commit at build time rather than tracking
+its default branch. That is what makes the image reproducible — the suite
+`run_tests` runs is the suite this image was built against, not whatever
+`main` moved to since.
+
+**The cost is real and worth stating before anyone asks**: nothing refreshes
+it. When the target repo moves, this image keeps working against the commit it
+was built with, and a rebuild is the only thing that catches it up:
+
+```bash
+ssh ticket-to-pr-agent.exe.xyz "cd ~/app && git pull -q && \
+  TARGET_REF=main docker compose --env-file .env -f deploy/docker-compose.yml up -d --build"
+```
+
+Production would put that on a schedule, or on the same webhook that triggers
+a run. Neither is built. The alternative — building against a floating
+`main` — trades the staleness for a worse problem: two runs of the same image
+testing against different code, with no way to tell which.
 
 ## What costs money while this runs
 

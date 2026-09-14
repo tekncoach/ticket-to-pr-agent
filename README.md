@@ -52,8 +52,12 @@ Every stage is built except `get_ci_status`, which needs a pushed PR to poll. Th
 
 **https://ticket-to-pr-agent.exe.xyz** — one container on an exe.dev VM,
 shadow mode on, so every write comes back as a receipt and nothing reaches a
-real repository. Served `noindex, nofollow`: the link is meant to be given,
-not found.
+real repository.
+
+**Access is closed by default**, and the URL above redirects to a login unless
+it has been opened. That is deliberate: a demo URL is given to someone, not
+found by someone. Opening it is one command and so is closing it again —
+[`docs/DEPLOY.md`](docs/DEPLOY.md#access). Ask and it will be open.
 
 ## Demo
 
