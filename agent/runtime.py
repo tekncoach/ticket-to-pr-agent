@@ -108,7 +108,15 @@ class AgentRuntime:
     # Policy guard, not performance: caps executed tool_use blocks per turn.
     # Calls past the cap still get a tool_result, just an error one —
     # dropping one trains Claude to stop using parallel calls at all.
-    max_parallel_tool_calls: int = 3
+    #
+    # 6 rather than 3: the number bounds side effects per turn, and 3 was a
+    # guess made before any model had been watched batching. Sonnet asks for
+    # four reads at once routinely, and refusing the fourth spent a turn
+    # teaching it a limit rather than doing the work. The reason for a cap is
+    # that one turn must not trigger unbounded writes — and every write tool
+    # is separately gated by shadow mode, so the cap is the second lock, not
+    # the first.
+    max_parallel_tool_calls: int = 6
     # How many times in a row one tool may fail before the run stops and
     # reports instead of trying again. Consecutive, and per tool: a failure the
     # agent recovers from resets it, so productive self-correction (a rejected

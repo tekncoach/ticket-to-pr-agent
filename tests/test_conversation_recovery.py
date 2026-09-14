@@ -278,3 +278,12 @@ def test_an_ordinary_tool_is_still_stopped_on_an_identical_call(monkeypatch):
 
     with patch.object(AgentRuntime, "_llm", side_effect=_llm):
         assert runtime.run("go")["error"] == "duplicate_tool_call"
+
+
+def test_the_parallel_cap_still_refuses_rather_than_dropping(monkeypatch):
+    # Raised from 3 to 6 after watching Sonnet batch four reads routinely.
+    # What must not change: a call past the cap gets an error tool_result, not
+    # silence — dropping one trains the model to stop batching at all.
+    from agent.runtime import AgentRuntime as R
+    assert R(model="claude-haiku-4-5", tools={}, system="s",
+             logger=NullSink()).max_parallel_tool_calls == 6
