@@ -48,6 +48,13 @@ flowchart LR
 
 Every stage is built except `get_ci_status`, which needs a pushed PR to poll. The `agent:ready` label is the contract and it is enforced in code, not described: `agent/tickets.py` refuses an unlabelled issue before the model is called at all. See [`docs/SDLC-schema.md`](docs/SDLC-schema.md) for the fuller diagram, including the production-pipeline steps (lint, type-check) this project isn't running locally yet, and why.
 
+## Live
+
+**https://ticket-to-pr-agent.exe.xyz** — one container on an exe.dev VM,
+shadow mode on, so every write comes back as a receipt and nothing reaches a
+real repository. Served `noindex, nofollow`: the link is meant to be given,
+not found.
+
 ## Demo
 
 <img src="docs/demo/ticket-to-pr.gif" alt="Replaying a run: the queue with its pull request, the timeline, a step opened onto its arguments and result, and the answer the agent ended on" width="760">
