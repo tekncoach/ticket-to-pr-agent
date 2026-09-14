@@ -19,7 +19,7 @@ The target repo is a config value, not a hardcoded assumption — point `TARGET_
 Most "agent" demos wrap an LLM call in a chat loop and call it done. This one is built the other way: every mechanism an FDE-style deployment actually needs — structured tool calls, write gating, argument validation, cost and token accounting, crash-safe logging — is hand-rolled and verified against the live API, not assumed to come free from a framework. That verification isn't just asserted here — [`docs/manual_scenarios.md`](docs/manual_scenarios.md) has the actual traces, prompts, and independently-checked results for seven live runs.
 
 - **No agent framework.** The tool-calling loop is built directly on `anthropic.messages.create` — no LangChain, no LangGraph. Every retry, stop condition, and failure path is code you can read start to finish in one file.
-- **Native tools where they fit, hand-rolled where it matters.** File exploration and edits run on Anthropic's own `bash_20250124` and `text_editor_20250728` client-side tools — schema-less, security-hardened at the boundary (an executable allowlist, never `shell=True`, path confinement to the target checkout, a path denylist for sensitive files). GitHub calls stay hand-written REST, deliberately, to keep the mechanics visible. `GITHUB_TOKEN` itself is scoped to the `Authorization` header only — [`evals/test_no_secrets_in_logs.py`](evals/test_no_secrets_in_logs.py) asserts it directly, mocking a real fetch and checking it never lands in the tool's output, and by extension neither of the two JSONL logs below.
+- **Native tools where they fit, hand-rolled where it matters.** File exploration and edits run on Anthropic's own `bash_20250124` and `text_editor_20250728` client-side tools — schema-less, security-hardened at the boundary (an executable allowlist, never `shell=True`, path confinement to the target checkout, a path denylist for sensitive files). GitHub calls stay hand-written REST, deliberately, to keep the mechanics visible. `GITHUB_TOKEN` itself is scoped to the `Authorization` header only — [`tests/test_no_secrets_in_logs.py`](tests/test_no_secrets_in_logs.py) asserts it directly, mocking a real fetch and checking it never lands in the tool's output, and by extension neither of the two JSONL logs below.
 - **Policy guards the model can't opt out of.** A hard cap on parallel tool calls, JSON-Schema-validated arguments on every custom tool, a mode flag that disables every write tool at once, and a hard stop the instant the model repeats an identical tool call — converting a possible infinite spin into a bounded, explainable failure.
 - **Full run observability.** Every tool call, token count (including thinking tokens), USD cost, and stop reason is written to an append-only JSONL log per run — flushed and fsynced per event, so a mid-run crash doesn't lose what already happened. A second, parallel JSONL file per run carries the actual conversation content (what was asked, what the model said or thought, what each tool returned) — kept separate so the lean metrics log stays scannable on its own. An optional live mode prints the same events to stdout as they occur.
 - **A written spec that evolves with the code.** [`docs/SPEC.md`](docs/SPEC.md) states the problem, the tools, the SLOs, and every architecture decision with its trigger to revisit — including the ones later commits reversed, on purpose, once real usage justified it.
@@ -85,14 +85,22 @@ tools/
   edit_file.py    Anthropic's native text-editor tool, workspace-confined + denylisted
   fetch_ticket.py hand-written GitHub REST call
 docs/            the technical spec, architecture decisions, and everything verified live
-evals/           tests
+tests/           unit tests — deterministic, hermetic, the CI gate
+evals/           behavioural evals — real model, scored, costs money
 ```
 
 ## Testing
 
+Two suites, two different questions, deliberately not one command.
+
 ```bash
-uv run pytest evals -q
+make test    # does the code do what we wrote? deterministic, hermetic, free
+make eval    # does the agent behave correctly? real model, scored, costs money
 ```
+
+`make test` is the CI gate and the only number that may be 100%. `make eval`
+measures behaviour against a real model and corpus, so it is scored against
+thresholds rather than passed — see [`evals/README.md`](evals/README.md).
 
 ## Documentation
 

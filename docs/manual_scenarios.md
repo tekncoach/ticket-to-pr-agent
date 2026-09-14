@@ -90,7 +90,7 @@ turn 1: final answer — confirms the insert
 
 ## What these scenarios did *not* surface
 
-No infinite-retry loop, no invented tool arguments, no hallucinated tool output, and no case where the write gate was bypassed. That is itself informative: the gate is doing its job, not merely existing unexercised. `edit_file`'s `ambiguous_match` path and the path-escape/denylist guards are covered by `evals/test_edit_file_tool.py` instead of another manual scenario — exactly the kind of regression a red test should catch, not a doc that says it was checked once.
+No infinite-retry loop, no invented tool arguments, no hallucinated tool output, and no case where the write gate was bypassed. That is itself informative: the gate is doing its job, not merely existing unexercised. `edit_file`'s `ambiguous_match` path and the path-escape/denylist guards are covered by `tests/test_edit_file_tool.py` instead of another manual scenario — exactly the kind of regression a red test should catch, not a doc that says it was checked once.
 
 ## 8. The write path, live against the real GitHub API
 

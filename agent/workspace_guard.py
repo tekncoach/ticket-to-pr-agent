@@ -17,7 +17,7 @@ def resolve_within_workspace(workspace: Path, raw_path: str) -> Path | None:
     right side is absolute (`Path("/workspace") / "/etc/passwd" ==
     Path("/etc/passwd")`), so an absolute-path argument is caught by the
     same relative_to() check below without special-casing it — verified,
-    not assumed, in evals/test_bash_tool.py and evals/test_edit_file_tool.py.
+    not assumed, in tests/test_bash_tool.py and tests/test_edit_file_tool.py.
     Also catches ".." traversal past the root and a symlink resolving
     outside it.
     """

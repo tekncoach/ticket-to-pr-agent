@@ -4,7 +4,7 @@
 
 ## Why this exists, distinct from the earlier GITHUB_TOKEN test
 
-`evals/test_no_secrets_in_logs.py` (an earlier fix) asserts *our own* `GITHUB_TOKEN` never leaks into a tool's output. This is a different, larger concern: a GitHub Issue is written by anyone, and its body is untrusted input — someone could paste a real API key into a bug report as a repro example. GitHub itself already scans issue bodies and comments for secrets (free on public repos), but that's a platform-side notification to the secret's *owner* — not an API this project can call before its own pipeline ingests the same content. This redaction step is necessary regardless of what GitHub's own scanning does on its side.
+`tests/test_no_secrets_in_logs.py` (an earlier fix) asserts *our own* `GITHUB_TOKEN` never leaks into a tool's output. This is a different, larger concern: a GitHub Issue is written by anyone, and its body is untrusted input — someone could paste a real API key into a bug report as a repro example. GitHub itself already scans issue bodies and comments for secrets (free on public repos), but that's a platform-side notification to the secret's *owner* — not an API this project can call before its own pipeline ingests the same content. This redaction step is necessary regardless of what GitHub's own scanning does on its side.
 
 ## Why betterleaks, not detect-secrets
 
@@ -25,7 +25,7 @@ betterleaks is a compiled Go binary — `uv add` cannot install it. `redact_secr
 | Environment | Status |
 |---|---|
 | Local dev | Requires `brew install betterleaks` (or the Linux equivalent) — a prerequisite now documented in the README's Quickstart, not assumed. |
-| CI (`.github/workflows/ci.yml`) | betterleaks is **not installed**. `evals/test_secrets_redaction.py` mocks `subprocess.run`, so CI stays hermetic and green — but it only exercises the graceful-degradation path (the supplementary `sk-ant-` pattern), never the real binary. Named gap, not hidden. |
+| CI (`.github/workflows/ci.yml`) | betterleaks is **not installed**. `tests/test_secrets_redaction.py` mocks `subprocess.run`, so CI stays hermetic and green — but it only exercises the graceful-degradation path (the supplementary `sk-ant-` pattern), never the real binary. Named gap, not hidden. |
 | Docker (not built yet) | See [`docs/research/secrets-redaction.md`](research/secrets-redaction.md): the image will need betterleaks copied in (multi-stage build from `ghcr.io/betterleaks/betterleaks`, or a pinned binary download) — not designed in detail until deployment is actually built out. |
 
 **Graceful degradation, on purpose:** if the binary is missing or hangs, `redact_secrets()` falls back to the supplementary regex pattern only, rather than crashing `fetch_ticket`. This means a misconfigured environment silently gets narrower protection instead of failing loudly — a real, named tradeoff, not an oversight. Revisit (e.g. log a warning) if that's ever actually hit in practice.

@@ -125,7 +125,7 @@ not reposting, check the issue
 
 That can leave a comment unconfirmed. Posting again duplicates it for certain — and of the two outcomes, only one is recoverable by a human opening the issue. The first read is exempt: nothing has been sent, so there is nothing to duplicate.
 
-Both directions are frozen as regression tests in `evals/test_comment_on_ticket_tool.py`.
+Both directions are frozen as regression tests in `tests/test_comment_on_ticket_tool.py`.
 
 ## Conversation-level recovery
 

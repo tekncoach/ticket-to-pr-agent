@@ -53,6 +53,8 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["evals"]
+# tests/ only. evals/ is a different thing that costs money to run and is
+# scored against thresholds rather than passing or failing — see evals/README.md.
+testpaths = ["tests"]
 addopts = "-q"
 pythonpath = ["."]         # so tests can `import agent.*` / `import tools.*` from the repo root

@@ -26,10 +26,12 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
         with:
           python-version: "3.12"
-      # Every test in evals/ is hermetic (tmp_path stands in for the target
-      # workspace, no network, no API key) — no secrets are configured or
-      # needed for this job. If a test ever needs a live key, that's the
-      # trigger to split it into its own opt-in job, not to add a repo
-      # secret here.
+      # tests/ is hermetic by construction (tmp_path stands in for the target
+      # workspace, no network, no API key), which is why no secrets are
+      # configured for this job. evals/ is deliberately NOT run here: it calls
+      # a real model against a real corpus, costs money per run, and is scored
+      # against thresholds rather than passing or failing. That belongs in its
+      # own opt-in job with its own secrets — the split this comment used to
+      # name as a future trigger, now taken.
       - run: uv sync --extra dev
-      - run: uv run pytest evals -q
+      - run: uv run pytest tests -q

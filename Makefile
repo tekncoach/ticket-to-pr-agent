@@ -1,4 +1,4 @@
-.PHONY: agent run mcp-server ingest rag-query eval docker-up
+.PHONY: agent run mcp-server ingest rag-query test eval docker-up
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -27,9 +27,17 @@ ingest:
 rag-query:
 	uv run --env-file .env python -m rag.query "$(Q)"
 
-# Run the unit / regression suite. Runs without an LLM key.
+# The unit suite: deterministic, hermetic, free, and the CI gate. Runs
+# without an LLM key or a network. This is the one that must be green.
+test:
+	uv run pytest tests -q
+
+# The evals: the agent's own behaviour, measured against a real model and a
+# real corpus. Costs money, is not deterministic, and is scored rather than
+# passed — a threshold, not a green tick. Needs .env (LLM_API_KEY, HF_TOKEN)
+# and a built corpus; skips what it cannot reach instead of failing.
 eval:
-	uv run pytest evals -q
+	uv run --env-file .env pytest evals -q -rs
 
 # Build and run the service in Docker. The compose file does not exist
 # yet — this target is a placeholder until deployment is built out.
