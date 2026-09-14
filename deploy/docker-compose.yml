@@ -24,7 +24,12 @@ services:
     # the image and never from a committed .env. On the VM they are set in the
     # shell that runs compose, or by the platform.
     environment:
-      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY must be set}
+      # Not ${LLM_API_KEY:?...}: a required-variable guard fails EVERY compose
+      # subcommand, so `logs` and `ps` stop working during an incident unless
+      # the operator has the key exported. The service starts without it and
+      # reports llm_ready false on /health, which is the better failure — a
+      # container that says what is wrong beats one that will not come up.
+      LLM_API_KEY: ${LLM_API_KEY:-}
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       HF_TOKEN: ${HF_TOKEN:-}
       LLM_MODEL: ${LLM_MODEL:-claude-haiku-4-5}
