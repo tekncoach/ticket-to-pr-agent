@@ -41,3 +41,6 @@ tmp/
 
 # Vendored skills, borrowed from other projects — not this repo's code.
 .claude/skills/
+
+# The demo recording is committed on purpose — it is the deliverable.
+!docs/demo/

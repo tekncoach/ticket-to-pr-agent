@@ -26,6 +26,9 @@ GITHUB_HEADERS = {
 # SPEC.md's Trigger section: "That label is the contract — no label, no run."
 # It was stated there and enforced nowhere until this file.
 READY_LABEL = "agent:ready"
+# Imported rather than duplicated: the branch name IS the link between an
+# issue and the pull request the agent opened for it.
+from tools.open_pr import branch_for  # noqa: E402
 MAX_QUEUE = 20
 
 
@@ -70,14 +73,33 @@ def list_issues(ready_only: bool = False) -> ToolResult:
         result = client.request(
             "GET", f"/repos/{REPO}/issues", headers=GITHUB_HEADERS, params=params,
         )
+        if not result.ok:
+            return result
+        issues = result.data if isinstance(result.data, list) else []
+        # GitHub's issues endpoint also returns pull requests; a PR is not a
+        # ticket. But a PR the agent already opened for one IS worth showing
+        # next to it — the queue is where you look to find out what happened.
+        prs = client.request(
+            "GET", f"/repos/{REPO}/pulls", headers=GITHUB_HEADERS,
+            params={"state": "all", "per_page": MAX_QUEUE},
+        )
 
-    if not result.ok:
-        return result
-    issues = result.data if isinstance(result.data, list) else []
-    # GitHub's issues endpoint also returns pull requests; a PR is not a ticket.
-    return ToolResult(ok=True, data=[
-        _issue_summary(i) for i in issues if "pull_request" not in i
-    ])
+    by_branch = {}
+    if prs.ok and isinstance(prs.data, list):
+        by_branch = {(p.get("head") or {}).get("ref"): p for p in prs.data}
+
+    rows = []
+    for issue in issues:
+        if "pull_request" in issue:
+            continue
+        summary = _issue_summary(issue)
+        pr = by_branch.get(branch_for(summary["number"]))
+        summary["pr"] = {
+            "number": pr.get("number"), "url": pr.get("html_url"),
+            "state": "draft" if pr.get("draft") else pr.get("state"),
+        } if pr else None
+        rows.append(summary)
+    return ToolResult(ok=True, data=rows)
 
 
 def check_ready(issue_id: int) -> ToolResult:
