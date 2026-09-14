@@ -200,3 +200,32 @@ def test_naming_something_turns_the_same_verb_into_a_write(tmp_path, command):
     # The subcommand allowlist says which verbs; this says which shape. A
     # positional argument after branch/tag/config is the thing being created.
     assert "names something to change" in _run(tmp_path, command).error_code
+
+
+def test_cd_into_the_workspace_is_a_no_op_not_a_syntax_error(tmp_path):
+    # The prompt hands the agent the workspace's absolute path, so it uses it
+    # — and was refused for the operator, which reads as the path being wrong
+    # when it was exactly right. Every command already runs with cwd set
+    # there, so the cd changes nothing and is stripped.
+    (tmp_path / "a.txt").write_text("hello\n")
+    result = _run(tmp_path, f"cd {tmp_path} && cat a.txt")
+    assert result.ok
+    assert "hello" in result.data
+
+
+def test_cd_into_a_subdirectory_of_the_workspace_is_allowed(tmp_path):
+    (tmp_path / "sub").mkdir()
+    assert _run(tmp_path, f"cd {tmp_path}/sub && pwd").ok
+
+
+def test_cd_out_of_the_workspace_is_an_escape_not_an_operator_problem(tmp_path):
+    # The error has to name what was actually wrong, or the agent corrects
+    # the wrong thing — it would drop the && and try the same escape again.
+    result = _run(tmp_path, "cd /etc && cat passwd")
+    assert result.error_code == "denied: argument escapes workspace: /etc"
+
+
+def test_a_bare_cd_is_still_not_an_allowed_executable(tmp_path):
+    # Stripping only applies to the `cd X && rest` shape. `cd` alone changes
+    # nothing we can observe and is not in the allowlist.
+    assert "executable not allowed: cd" in _run(tmp_path, "cd /etc").error_code

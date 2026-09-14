@@ -67,6 +67,17 @@ DISALLOWED_OPERATORS = ("&&", "||", ";", "`", "$(", ">", "<", "\n")
 # single biggest cause of refusals across every real run: six of the nine
 # rejected commands died on a suppression that changes nothing.
 _STDERR_REDIRECTS = ("2>/dev/null", "2>&1", "2> /dev/null")
+
+# `cd <somewhere> && <command>`. The prompt hands the agent the workspace's
+# absolute path, so it reasonably uses it — and was then refused for the
+# operator, which reads as the path being wrong when it was exactly right.
+#
+# Resolving the target answers the real question, with the guard that already
+# exists: inside the workspace the cd is a NO-OP, because every command
+# already runs with cwd=WORKSPACE, so it is stripped. Outside, it is an escape
+# and gets the escape's own error rather than a misleading one about syntax.
+_CD_PREFIX_RE = re.compile(r"""^\s*cd\s+(?P<path>"[^"]*"|'[^']*'|\S+)\s*(?:&&|;)\s*(?P<rest>.+)$""",
+                           re.DOTALL)
 MAX_PIPELINE_STAGES = 3
 _TIMEOUT_S = 10
 
@@ -148,6 +159,14 @@ def _handler(arguments: dict) -> ToolResult:
 
     for redirect in _STDERR_REDIRECTS:
         command = command.replace(redirect, " ")
+
+    cd = _CD_PREFIX_RE.match(command)
+    if cd:
+        target = cd.group("path").strip("\"'")
+        if resolve_within_workspace(WORKSPACE, target) is None:
+            return ToolResult(ok=False, error_code=str(ToolError(
+                ErrorClass.DENIED, f"argument escapes workspace: {target}")))
+        command = cd.group("rest")
 
     if any(op in command for op in DISALLOWED_OPERATORS):
         return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.DENIED, "shell operator rejected")))
