@@ -14,7 +14,9 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from agent.factory import LLM_MODEL, SHADOW_MODE, TOOLS, build_runtime, llm_ready
+from agent.config import shadow_mode
+from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
+from agent.runtime import AgentRuntime
 
 app = FastAPI(title="ticket-to-pr-agent", version="0.1.0")
 
@@ -23,7 +25,20 @@ app = FastAPI(title="ticket-to-pr-agent", version="0.1.0")
 # holds a connection pool, no reason to rebuild it (or re-validate the
 # thinking config) on every call. run() generates a fresh run_id per call
 # regardless, so sharing the instance across requests is safe.
-_runtime = build_runtime()
+# Built on first use, not at import. A missing LLM_API_KEY used to raise
+# here, so the process died before it could serve anything — including
+# /health, which is the one endpoint an operator needs when a secret is
+# missing. It also made /v1/chat's own 503-on-no-key branch unreachable. A
+# container that starts and reports itself unhealthy beats one that
+# crash-loops with the reason only in the logs.
+_runtime: AgentRuntime | None = None
+
+
+def _get_runtime() -> AgentRuntime:
+    global _runtime
+    if _runtime is None:
+        _runtime = build_runtime()
+    return _runtime
 
 
 class ChatRequest(BaseModel):
@@ -37,12 +52,14 @@ class ChatRequest(BaseModel):
 def health() -> dict:
     return {
         "status": "ok",
-        "shadow_mode": SHADOW_MODE,
+        # Read on every request, not cached at import: this is the field an
+        # operator refreshes to confirm the kill switch actually took.
+        "shadow_mode": shadow_mode(),
         # hello_agent.py hardcoded this False ("no write tools yet"). Real
         # now: edit_file is side_effect=True and genuinely gated by
-        # SHADOW_MODE — true reflects whether shadow mode is actually
-        # doing something, not just declared.
-        "shadow_enforced": SHADOW_MODE and any(t.side_effect for t in TOOLS.values()),
+        # True reflects whether shadow mode is actually doing something, not
+        # just declared: it is only meaningful if a write tool exists to gate.
+        "shadow_enforced": shadow_mode() and any(t.side_effect for t in TOOLS.values()),
         "llm_ready": llm_ready(),
         "model": LLM_MODEL,
         "tools": sorted(TOOLS.keys()),
@@ -56,7 +73,7 @@ def chat(req: ChatRequest):
             status_code=503,
             content={"error": "LLM_API_KEY (or ANTHROPIC_API_KEY) is not set"},
         )
-    return _runtime.run(req.message)
+    return _get_runtime().run(req.message)
 
 
 if __name__ == "__main__":

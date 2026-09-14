@@ -44,7 +44,7 @@ from __future__ import annotations
 import os
 import time
 
-from agent.config import REPO
+from agent.config import REPO, shadow_mode
 from agent.errors import ErrorClass, ToolError, is_retryable, parse
 from agent.runtime import Tool, ToolResult
 from agent.secrets_redaction import redact_secrets
@@ -93,11 +93,6 @@ def _build_client(token: str) -> ResilientClient:
     return ResilientClient(GITHUB_API, token, timeout=10, max_attempts=READ_ATTEMPTS)
 
 
-def _shadow_mode() -> bool:
-    # Read at call time, not import time: tests and the service both change it.
-    return os.environ.get("SHADOW_MODE", "true").lower() == "true"
-
-
 def _find_marked_comment(
     client: ResilientClient, issue_id: int, key: str,
 ) -> tuple[dict | None, bool]:
@@ -140,7 +135,7 @@ def _handler(arguments: dict) -> ToolResult:
     # caller hopes. SHADOW_MODE forces it: the runtime's write gate already
     # blocks side-effect tools in shadow mode, and this is the second lock, so
     # that opening the gate cannot on its own start posting to a real repo.
-    dry_run = bool(arguments.get("dry_run")) or _shadow_mode()
+    dry_run = bool(arguments.get("dry_run")) or shadow_mode()
 
     # The last real failure, kept as a ToolError so the class survives the
     # loop. Wrapping an already-stringified error_code in a ToolError whose
@@ -159,7 +154,7 @@ def _handler(arguments: dict) -> ToolResult:
                 ))
 
             if dry_run:
-                reason = "SHADOW_MODE" if _shadow_mode() else "dry_run"
+                reason = "SHADOW_MODE" if shadow_mode() else "dry_run"
                 return ToolResult(ok=True, data=(
                     f"would comment on {target} ({reason}, nothing posted): {body}"
                 ))

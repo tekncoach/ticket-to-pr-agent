@@ -1,0 +1,26 @@
+# The build context is everything Docker uploads before the first line of the
+# Dockerfile runs. Two of these directories are large and neither belongs in
+# the image: workspace/ is cloned during the build instead (pinned to a ref,
+# so the image is reproducible rather than a copy of whatever state this
+# laptop's checkout happens to be in), and data/ holds a 5.7 MB corpus that is
+# mounted as a volume.
+.git
+.venv
+workspace/
+data/
+tmp/
+.playwright-mcp/
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Never in an image, and the reason .env.example exists.
+.env
+.env.*
+!.env.example
+
+.DS_Store
+.idea/
+.vscode/

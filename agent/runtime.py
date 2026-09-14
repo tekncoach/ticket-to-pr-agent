@@ -85,7 +85,10 @@ class AgentRuntime:
     system: str
     max_turns: int = 8
     max_tokens: int = 1024
-    allow_side_effects: bool = False
+    # A bool, or a callable resolved on every tool call. The callable form is
+    # what makes the write gate a live switch rather than a value frozen when
+    # the runtime was constructed — see agent.config.writes_allowed.
+    allow_side_effects: bool | Callable[[], bool] = False
     # Policy guard, not performance: caps executed tool_use blocks per turn.
     # Calls past the cap still get a tool_result, just an error one —
     # dropping one trains Claude to stop using parallel calls at all.
@@ -280,7 +283,7 @@ class AgentRuntime:
                     if tool is None:                   # a hallucinated tool name
                         result = ToolResult(ok=False, error_code=str(
                             ToolError(ErrorClass.VALIDATION, f"unknown tool: {block.name}")))
-                    elif tool.side_effect and not self.allow_side_effects:
+                    elif tool.side_effect and not self._writes_allowed():
                         result = ToolResult(ok=False, error_code=str(ToolError(
                             ErrorClass.DENIED, "side effects are not allowed in this run")))
                     elif (schema_error := self._validate_args(tool, block.input)) is not None:
@@ -346,6 +349,10 @@ class AgentRuntime:
             emit_message("user", tool_results, turn=turn)
 
         return {"run_id": run_id, "error": "max_turns", "trace": trace}
+
+    def _writes_allowed(self) -> bool:
+        gate = self.allow_side_effects
+        return gate() if callable(gate) else gate
 
     @staticmethod
     def _validate_args(tool: Tool, args: dict) -> str | None:

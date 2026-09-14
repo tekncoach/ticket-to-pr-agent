@@ -31,7 +31,7 @@ from __future__ import annotations
 import os
 import subprocess
 
-from agent.config import REPO, WORKSPACE
+from agent.config import REPO, WORKSPACE, shadow_mode
 from agent.errors import ErrorClass, ToolError
 from agent.runtime import Tool, ToolResult
 from agent.secrets_redaction import redact_secrets
@@ -58,10 +58,6 @@ def _fail(error_class: ErrorClass, detail: str) -> ToolResult:
 def _build_client(token: str) -> ResilientClient:
     # A seam, so tests can answer with a MockTransport instead of a network.
     return ResilientClient(GITHUB_API, token, timeout=15)
-
-
-def _shadow_mode() -> bool:
-    return os.environ.get("SHADOW_MODE", "true").lower() == "true"
 
 
 def branch_for(issue_id: int) -> str:
@@ -130,7 +126,7 @@ def _handler(arguments: dict) -> ToolResult:
         return _fail(ErrorClass.VALIDATION, "the working tree has no changes to open a PR for")
 
     branch = branch_for(issue_id)
-    dry_run = bool(arguments.get("dry_run")) or _shadow_mode()
+    dry_run = bool(arguments.get("dry_run")) or shadow_mode()
 
     with _build_client(token) as client:
         existing = _existing_pr(client, branch)
@@ -141,7 +137,7 @@ def _handler(arguments: dict) -> ToolResult:
             ))
 
         if dry_run:
-            reason = "SHADOW_MODE" if _shadow_mode() else "dry_run"
+            reason = "SHADOW_MODE" if shadow_mode() else "dry_run"
             return ToolResult(ok=True, data=(
                 f"would open a draft PR from {branch} into {BASE_BRANCH} for issue "
                 f"#{issue_id} ({reason}, nothing pushed) — {len(files)} file(s): "

@@ -26,6 +26,23 @@ WORKSPACE = Path(os.environ.get("TARGET_WORKSPACE", str(_default_workspace)))
 # checkout, created at image build time, keeps the two apart.
 TARGET_PYTHON = Path(os.environ.get("TARGET_PYTHON", str(WORKSPACE / ".venv" / "bin" / "python")))
 
+def shadow_mode() -> bool:
+    """Whether write tools are currently disabled. Read at CALL time.
+
+    This is the kill switch, and reading it at import time would make it one
+    that needs a restart to take effect — which is not a kill switch. Its whole
+    value is that someone can stop writes during an incident in seconds,
+    without a rebuild and without this laptop. One definition, used by the
+    runtime's write gate, by /health, and by each write tool's own second
+    check, so the three can never disagree about what is on.
+    """
+    return os.environ.get("SHADOW_MODE", "true").lower() == "true"
+
+
+def writes_allowed() -> bool:
+    return not shadow_mode()
+
+
 # Per-run structured logs: one JSONL file per run_id, tmp/sessions/<run_id>.jsonl.
 # One project (this repo) -> one directory is enough; no <project>/<session>
 # nesting the way ~/.claude/projects/ needs, since that pattern exists to

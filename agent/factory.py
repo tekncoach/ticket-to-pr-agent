@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 
 from agent.event_sink import EventSink, JSONLFileSink, MultiSink, StdoutSink
+from agent.config import shadow_mode, writes_allowed
 from agent.runtime import AgentRuntime, Tool
 from rag.retrieve import GROUNDING
 from tools.bash import bash
@@ -24,12 +25,11 @@ LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
 MAX_TURNS = int(os.environ.get("MAX_TURNS", "8"))
 # The write gate: edit_file, comment_on_ticket and open_pr are
-# side_effect=True, so
-# they're rejected unless allow_side_effects is True. SHADOW_MODE=true (the
-# safe default) means writes stay off; set SHADOW_MODE=false to enable them.
-# comment_on_ticket carries its own shadow check as well, so opening this
-# gate is not on its own enough to start posting to a real repo.
-SHADOW_MODE = os.environ.get("SHADOW_MODE", "true").lower() == "true"
+# side_effect=True, so they're rejected unless writes are allowed. The switch
+# lives in agent.config and is read on every tool call, never cached here —
+# see agent.config.shadow_mode. comment_on_ticket and open_pr each carry their
+# own check as well, so opening this gate is not on its own enough to start
+# writing to a real repo.
 # Prepared, off by default. If flipped on, raise MAX_TOKENS accordingly —
 # the budget_tokens path (Haiku 4.5, our default) requires
 # max_tokens > THINKING_BUDGET_TOKENS, checked in AgentRuntime.__post_init__.
@@ -111,7 +111,9 @@ def build_runtime() -> AgentRuntime:
     return AgentRuntime(
         model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
         max_tokens=MAX_TOKENS, max_turns=MAX_TURNS,
-        allow_side_effects=not SHADOW_MODE,
+        # The function, not its value: passing writes_allowed() here would
+        # freeze the switch at construction, which is the bug this replaces.
+        allow_side_effects=writes_allowed,
         thinking_enabled=THINKING_ENABLED, thinking_budget_tokens=THINKING_BUDGET_TOKENS,
         logger=build_logger(),
     )

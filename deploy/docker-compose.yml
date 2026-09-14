@@ -1,0 +1,70 @@
+# deploy/docker-compose.yml
+#
+# One service, on purpose. The corpus is sqlite-vec — a single file, mounted
+# below — so there is no vector database to run alongside the app. That was
+# the reason for choosing it over Postgres (docs/SPEC.md, Deferred
+# architecture decisions), and this file is where the choice pays.
+
+services:
+  agent:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        # Override to build against a different target, or to pin the image to
+        # a specific commit of it rather than whatever main is at build time.
+        TARGET_REPO: ${TARGET_REPO:-tekncoach/liberty-rider-myroadtrips}
+        TARGET_REF: ${TARGET_REF:-main}
+    image: ticket-to-pr-agent:latest
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8000}:8000"
+
+    # Secrets come from the host's environment, never from a file baked into
+    # the image and never from a committed .env. On the VM they are set in the
+    # shell that runs compose, or by the platform.
+    environment:
+      LLM_API_KEY: ${LLM_API_KEY:?LLM_API_KEY must be set}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      HF_TOKEN: ${HF_TOKEN:-}
+      LLM_MODEL: ${LLM_MODEL:-claude-haiku-4-5}
+      MAX_TURNS: ${MAX_TURNS:-8}
+      # Deliberately not defaulted to false anywhere in this file. Turning
+      # writes on is a decision someone makes explicitly, on the host.
+      SHADOW_MODE: ${SHADOW_MODE:-true}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      TARGET_REPO: ${TARGET_REPO:-tekncoach/liberty-rider-myroadtrips}
+      VECTOR_DB_PATH: /app/data/kb/kb.sqlite3
+
+    volumes:
+      # The corpus is not in the repository (it references local paths and
+      # sources that are not ours to redistribute), so it is mounted rather
+      # than baked. Read-only: the agent searches it and never writes it.
+      - ../data/kb:/app/data/kb:ro
+      # Run traces survive a container restart, which is the whole point of
+      # being able to replay a bad session from its run_id.
+      - agent-sessions:/app/tmp/sessions
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # The agent executes model-written shell commands and edits files, so it
+    # gets what hardening does not conflict with its job.
+    #
+    # `read_only: true` is deliberately absent, and this is the honest reason:
+    # the agent's entire purpose is editing a git working tree that lives at
+    # /app/workspace inside the image. A read-only root filesystem would break
+    # the one thing the container exists to do, and mounting a volume over that
+    # path would shadow the checkout the image was built with. Confinement of
+    # what the agent may touch is enforced in code instead — tools/bash.py's
+    # argument resolution and tools/edit_file.py's path guards, both tested —
+    # rather than by a flag that would have to be switched off to work.
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  agent-sessions:
