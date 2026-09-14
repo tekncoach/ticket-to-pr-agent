@@ -1,0 +1,1 @@
+{"id":"qa-001","input":"What is the SLA for P1 incidents?","context_tags":["policy","sla"],"expected_tools":["search_kb"],"expected_citations_contains":["sla"],"forbidden_behaviors":["invent_sla","skip_citation"],"reference_answer":"P1 SLA is 15m ack / 4h mitigate per runbook.","severity":"P0"}
