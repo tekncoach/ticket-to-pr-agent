@@ -249,9 +249,13 @@ async function draw(rid, result) {
     ].join("");
   }
 
-  if (result) {
+  // Live: the POST's own body. Replayed: whatever the messages log kept.
+  const asked = trace?.asked;
+  const answer = result?.answer ?? result?.error ?? trace?.answer;
+  if (asked || answer) {
     $("answer").hidden = false;
-    $("answer").textContent = result.answer ?? result.error ?? JSON.stringify(result, null, 2);
+    $("answer").textContent = (asked ? `> ${asked}\n\n` : "") +
+      (answer ?? "This run recorded no final answer — it stopped before the agent replied.");
   }
 }
 

@@ -206,3 +206,68 @@ def test_the_favicon_is_served_rather_than_404ing(client):
     response = api.get("/favicon.ico")
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("image/svg+xml")
+
+
+# --- what the run actually said ---------------------------------------------
+
+def _write_messages(sessions, run_id, messages):
+    (sessions / f"{run_id}.messages.jsonl").write_text(
+        "\n".join(json.dumps(m) for m in messages) + "\n"
+    )
+
+
+def test_a_replayed_run_carries_the_question_and_the_answer(client):
+    # The events file records what the agent DID. Serving only that made a
+    # replayed run show its steps and hide its point.
+    api, sessions = client
+    _write_trace(sessions, "aa11", [{"event": "final", "turn": 1}])
+    _write_messages(sessions, "aa11", [
+        {"role": "user", "turn": 0, "content": "What are the commit conventions?"},
+        {"role": "assistant", "turn": 0, "content": [
+            {"type": "text", "text": "Let me search."},
+            {"type": "tool_use", "name": "search_kb"}]},
+        {"role": "user", "turn": 0, "content": [{"type": "tool_result"}]},
+        {"role": "assistant", "turn": 1, "content": [
+            {"type": "text", "text": "Atomic commits, imperative mood [SPEC#2]."}]},
+    ])
+
+    body = api.get("/v1/trace/aa11").json()
+    assert body["asked"] == "What are the commit conventions?"
+    assert body["answer"] == "Atomic commits, imperative mood [SPEC#2]."
+
+
+def test_narration_between_tool_calls_is_not_mistaken_for_the_answer(client):
+    # Every assistant turn carries text. Taking the last text block regardless
+    # of position would return "Let me search." as the answer.
+    api, sessions = client
+    _write_trace(sessions, "bb22", [{"event": "final", "turn": 1}])
+    _write_messages(sessions, "bb22", [
+        {"role": "user", "turn": 0, "content": "go"},
+        {"role": "assistant", "turn": 0, "content": [
+            {"type": "text", "text": "Let me search."},
+            {"type": "tool_use", "name": "search_kb"}]},
+        {"role": "assistant", "turn": 1, "content": [{"type": "text", "text": "The real answer."}]},
+    ])
+    assert api.get("/v1/trace/bb22").json()["answer"] == "The real answer."
+
+
+def test_a_run_that_never_answered_says_so_rather_than_inventing_one(client):
+    api, sessions = client
+    _write_trace(sessions, "cc33", [{"event": "tool_call", "turn": 0}])
+    _write_messages(sessions, "cc33", [
+        {"role": "user", "turn": 0, "content": "go"},
+        {"role": "assistant", "turn": 0, "content": [
+            {"type": "text", "text": "Working."}, {"type": "tool_use", "name": "bash"}]},
+    ])
+    body = api.get("/v1/trace/cc33").json()
+    assert body["asked"] == "go"
+    assert body["answer"] is None
+
+
+def test_a_trace_with_no_message_log_still_replays(client):
+    # The events file is written independently; one may exist without the other.
+    api, sessions = client
+    _write_trace(sessions, "dd44", [{"event": "final", "turn": 0}])
+    body = api.get("/v1/trace/dd44").json()
+    assert body["asked"] is None and body["answer"] is None
+    assert body["summary"]["outcome"] == "final"

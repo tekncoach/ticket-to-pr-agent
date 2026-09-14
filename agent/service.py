@@ -98,6 +98,29 @@ class ChatRequest(BaseModel):
 _INDEX = Path(__file__).parent / "static" / "index.html"
 
 
+def _conversation(path: Path) -> tuple[str | None, str | None]:
+    """(what was asked, what was finally answered) from a run's message log.
+
+    The answer is the text of the last assistant turn — the one that stopped
+    asking for tools. Reading the last text block regardless of position would
+    pick up the model's narration between tool calls instead.
+    """
+    if not path.exists():
+        return None, None
+
+    asked = answer = None
+    for message in _read_events(path):
+        content, role = message.get("content"), message.get("role")
+        if role == "user" and asked is None and isinstance(content, str):
+            asked = content
+        if role == "assistant" and isinstance(content, list):
+            text = "".join(b.get("text", "") for b in content if b.get("type") == "text")
+            has_tool_use = any(b.get("type") == "tool_use" for b in content)
+            if text and not has_tool_use:
+                answer = text
+    return asked, answer
+
+
 def _read_events(path: Path) -> list[dict]:
     """A trace file's events. A half-written final line is what a crash
     mid-run looks like — serving the rest beats serving nothing, and a run
@@ -278,8 +301,24 @@ def trace(run_id: str):
 
     events = _read_events(path)
     calls = [e for e in events if e.get("event") == "tool_result"]
+    asked, answered = _conversation(SESSIONS_DIR / f"{safe}.messages.jsonl")
+    if answered is None:
+        # A run the runtime stopped never produced an assistant turn, but it
+        # did produce a sentence — carried on the terminal event.
+        answered = next(
+            (e.get("answer") for e in reversed(events)
+             if e.get("event") in _TERMINAL_EVENTS and e.get("answer")),
+            None,
+        )
     return {
         "run_id": safe,
+        # The events file records what the agent DID; the question it was
+        # asked and the answer it gave live in the messages file beside it.
+        # Serving only the events made a replayed run show its steps and hide
+        # its point — "paste this id and replay the session" has to include
+        # what the session actually said.
+        "asked": asked,
+        "answer": answered,
         "events": events,
         "summary": {
             "turns": len({e.get("turn") for e in events if e.get("turn") is not None}),

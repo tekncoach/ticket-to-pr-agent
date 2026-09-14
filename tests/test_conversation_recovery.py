@@ -210,3 +210,37 @@ def test_the_system_prompt_teaches_the_taxonomy_it_will_actually_receive():
         assert error_class.value in TOOL_FAILURES, f"{error_class.value} is unmentioned"
     assert "do not try another tool to get around it" in TOOL_FAILURES
     assert "never report success you did not observe" in TOOL_FAILURES.lower()
+
+
+def test_the_stop_sentence_is_written_into_the_trace_not_only_returned(monkeypatch):
+    # Found by replaying a real run in the page: it showed every step and
+    # "recorded no final answer", when the runtime had in fact produced the
+    # one line explaining why it stopped. That sentence lived in the HTTP
+    # response, which nobody has an hour later.
+    tool = _failing_tool("bash", str(ToolError(ErrorClass.UNAVAILABLE, "HTTP 503")))
+    runtime = _runtime(monkeypatch, {"bash": tool})
+    llm, _ = _always_calls("bash")
+
+    with patch.object(AgentRuntime, "_llm", side_effect=llm):
+        result = runtime.run("go")
+
+    terminal = result["trace"][-1]
+    assert terminal["event"] == "repeated_tool_failure"
+    assert terminal["answer"] == result["answer"]
+    assert "failed 2 times in a row" in terminal["answer"]
+
+
+def test_an_llm_failure_also_leaves_its_sentence_behind(monkeypatch):
+    import anthropic
+    import httpx
+
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    runtime = _runtime(monkeypatch, {})
+
+    with patch.object(AgentRuntime, "_llm",
+                      side_effect=anthropic.APIConnectionError(request=request)):
+        result = runtime.run("go")
+
+    terminal = result["trace"][-1]
+    assert terminal["event"] == "llm_call_error"
+    assert terminal["answer"] == result["answer"]

@@ -169,8 +169,12 @@ class AgentRuntime:
             A run that gives up is still answering someone. An error code is a
             log line, not an answer — the sentence is the deliverable here.
             """
+            # The sentence goes into the trace, not only back to the caller.
+            # A run that gave up carries its explanation in the HTTP response,
+            # which nobody has an hour later — replaying it would then show
+            # every step and lose the one line that says why it stopped.
             emit({"event": reason, "run_id": run_id, "ts": _now_iso(),
-                  "turn": turn, **fields})
+                  "turn": turn, "answer": sentence, **fields})
             return {"run_id": run_id, "error": reason, "answer": sentence, "trace": trace}
 
         for turn in range(self.max_turns):
@@ -185,19 +189,19 @@ class AgentRuntime:
                 # LLM_MAX_RETRIES attempts are already spent by the time we get
                 # here, so this stops and says so in a sentence.
                 error_code = str(ToolError(_classify_api_error(exc), type(exc).__name__))
+                sentence = (
+                    f"Stopping: the model call failed ({error_code}), after the "
+                    f"SDK's own {LLM_MAX_RETRIES} retries — {next_step(error_code)}."
+                )
                 emit({
                     "event": "llm_call_error", "run_id": run_id, "ts": _now_iso(),
                     "turn": turn, "error_type": type(exc).__name__,
-                    "error_code": error_code, "error": str(exc),
+                    "error_code": error_code, "error": str(exc), "answer": sentence,
                 })
                 return {
                     "run_id": run_id,
                     "error": "llm_call_failed",
-                    "answer": (
-                        f"Stopping: the model call failed ({error_code}), after the "
-                        f"SDK's own {LLM_MAX_RETRIES} retries — "
-                        f"{next_step(error_code)}."
-                    ),
+                    "answer": sentence,
                     "trace": trace,
                 }
             usage = resp.usage
