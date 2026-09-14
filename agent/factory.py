@@ -107,9 +107,16 @@ def build_logger() -> EventSink:
     return MultiSink(JSONLFileSink(), StdoutSink()) if LIVE_TRACE else JSONLFileSink()
 
 
-def build_runtime() -> AgentRuntime:
+def build_runtime(model: str | None = None) -> AgentRuntime:
+    """model overrides LLM_MODEL for this run only.
+
+    The seam a router would plug into. Not the router itself: choosing a model
+    per task needs evidence about which tasks fail on which model, and that is
+    what the golden set produces. Routing before measuring is a guess frozen
+    into code at exactly the point where it could have been measured.
+    """
     return AgentRuntime(
-        model=LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
+        model=model or LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
         max_tokens=MAX_TOKENS, max_turns=MAX_TURNS,
         # The function, not its value: passing writes_allowed() here would
         # freeze the switch at construction, which is the bug this replaces.

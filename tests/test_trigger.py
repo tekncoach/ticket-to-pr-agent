@@ -115,12 +115,36 @@ def test_no_token_refuses_before_any_request():
 
 
 def test_the_task_prompt_orders_the_loop_the_spec_names():
+    # On the numbered steps, not raw string positions: step 2 names run_tests
+    # while explaining the loop, before step 3 names the edit tool, and that
+    # is the sentence doing the work.
     prompt = task_prompt(13)
-    steps = ["fetch_ticket", "search_kb", "bash", "str_replace_based_edit_tool",
-             "run_tests", "open_pr"]
-    positions = [prompt.index(step) for step in steps]
-    assert positions == sorted(positions), "the prompt walks the loop in order"
+    numbered = [line for line in prompt.splitlines() if line[:2] in ("1.", "2.", "3.", "4.", "5.")]
+    joined = " ".join(numbered)
+    for step, tool in [("1.", "fetch_ticket"), ("3.", "str_replace_based_edit_tool"),
+                       ("4.", "run_tests"), ("5.", "open_pr")]:
+        line = next(l for l in numbered if l.startswith(step))
+        assert tool in line, f"step {step} should call {tool}"
     assert "#13" in prompt
+    assert joined
+
+
+def test_retrieval_is_offered_not_imposed():
+    # A run that spent four turns asking an engineering-practices corpus about
+    # this repository's conventions, got DORA chunks, and wrote nothing. Making
+    # it a step to tick off turned a help into a tax.
+    prompt = task_prompt(13)
+    assert "search_kb is available if you need" in prompt
+    assert "not as a step to tick off" in prompt
+    assert prompt.index("run_tests") < prompt.index("search_kb is available")
+
+
+def test_the_prompt_names_the_edit_test_loop_as_the_discovery_tool():
+    # The previous run died in reconnaissance: 20 turns of reading, zero
+    # writes. Nothing told it that the tests answer faster than another view.
+    prompt = task_prompt(13)
+    assert "edit-then-test loop is your discovery tool" in prompt
+    assert "Write as soon as you can name the change" in prompt
 
 
 def test_the_task_prompt_forbids_a_pr_over_a_red_suite():

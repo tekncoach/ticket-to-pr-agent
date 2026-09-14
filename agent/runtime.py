@@ -267,6 +267,22 @@ class AgentRuntime:
             # Echo the assistant's turn back verbatim, or messages never grows
             # and the model has amnesia. resp.content is already the right
             # shape; the SDK accepts it straight back on the next call.
+            # Reasoning as its own event, not only buried inside the
+            # assistant turn's blocks: it is the part that explains a tool
+            # choice, and a trace you have to unpack a content array to read
+            # is a trace nobody reads.
+            thinking = "".join(
+                getattr(b, "thinking", "") for b in resp.content if b.type == "thinking"
+            )
+            if thinking:
+                emit({
+                    "event": "thinking", "run_id": run_id, "ts": _now_iso(),
+                    "turn": turn, "text": thinking,
+                    "gen_ai.usage.reasoning.output_tokens": (
+                        usage.output_tokens_details.thinking_tokens
+                        if usage.output_tokens_details else None),
+                })
+
             messages.append({"role": "assistant", "content": resp.content})
             # SDK pydantic blocks (Text, ToolUse, and ThinkingBlock when
             # enabled — where the reasoning lives, not just the final text).
