@@ -1,4 +1,4 @@
-.PHONY: agent run mcp-server ingest rag-query test eval docker-up
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval docker-up
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -21,6 +21,14 @@ mcp-server:
 # good-practices content, not the target repo.
 ingest:
 	uv run --env-file .env python -m rag.build_corpus
+
+# Hand the agent a ticket — SPEC.md's POC trigger.
+# Usage: make run-ticket ISSUE=13
+run-ticket:
+	uv run --env-file .env python -c "import json,urllib.request as u; \
+	  r=u.urlopen(u.Request('http://127.0.0.1:8000/v1/run', \
+	  json.dumps({'issue': $(ISSUE)}).encode(), \
+	  {'content-type':'application/json'})); print(r.read().decode())"
 
 # Manually explore search_kb: `make rag-query Q="your question"`, or with
 # no Q, drops into a loop that reads one question per line.

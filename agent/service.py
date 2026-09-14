@@ -19,6 +19,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from agent.config import SESSIONS_DIR, shadow_mode
+from agent.errors import ErrorClass, classify
+from agent.tickets import READY_LABEL, check_ready, list_ready_issues, task_prompt
 from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
 from agent.runtime import AgentRuntime
 
@@ -117,6 +119,47 @@ def chat(req: ChatRequest, request: Request):
             content={"error": "LLM_API_KEY (or ANTHROPIC_API_KEY) is not set"},
         )
     return _get_runtime().run(req.message, run_id=request.state.request_id)
+
+
+class RunRequest(BaseModel):
+    issue: int = Field(..., ge=1, description="The GitHub Issue number to work.")
+
+
+@app.get("/v1/issues")
+def issues():
+    """The agent's work queue: open issues a human has labelled agent:ready."""
+    result = list_ready_issues()
+    if not result.ok:
+        return JSONResponse(status_code=502, content={"error": result.error_code})
+    return {"label": READY_LABEL, "issues": result.data}
+
+
+@app.post("/v1/run")
+def run_ticket(req: RunRequest, request: Request):
+    """Hand the agent a ticket number — SPEC.md's POC trigger.
+
+    Synchronous, and deliberately so: no job queue today. A caller who wants
+    to watch the run rather than wait for it supplies its own x-request-id and
+    polls /v1/trace/{that id} while this request is still open — the trace is
+    flushed line by line as it happens, so it is readable before the run ends.
+    That is what lets a page show progress without any queue behind it.
+    """
+    if not llm_ready():
+        return JSONResponse(
+            status_code=503,
+            content={"error": "LLM_API_KEY (or ANTHROPIC_API_KEY) is not set"},
+        )
+
+    # The label is the contract, checked before the model sees anything. An
+    # agent cannot be allowed to reason its way past the question of whether
+    # it should be running at all.
+    ready = check_ready(req.issue)
+    if not ready.ok:
+        status = 403 if classify(ready.error_code) is ErrorClass.DENIED else 502
+        return JSONResponse(status_code=status, content={"error": ready.error_code})
+
+    result = _get_runtime().run(task_prompt(req.issue), run_id=request.state.request_id)
+    return {"issue": ready.data, **result}
 
 
 @app.get("/v1/trace/{run_id}")

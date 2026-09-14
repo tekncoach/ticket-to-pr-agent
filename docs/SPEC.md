@@ -18,7 +18,7 @@ An agent fits here — and a form or a search box would not — because the task
 ## Trigger (which issues, and how they reach the agent)
 
 - **Which issues are agent-treatable:** exactly those carrying the label `agent:ready` with a usable body. That label is the contract — no label, no run. A Kanban column (GitHub Projects) would be a heavier variant of the same label idea; not used here.
-- **POC trigger:** explicit and manual. The engineer hands the agent an issue number — `POST /v1/run {"issue": 42}` (or `make run-ticket ISSUE=42`). No public endpoint, no infra.
+- **POC trigger:** explicit and manual. The engineer hands the agent an issue number — `POST /v1/run {"issue": 42}` (or `make run-ticket ISSUE=42`). Built, and the label is enforced there rather than assumed: `agent/tickets.py`'s `check_ready()` refuses an unlabelled issue before the model is called at all. `GET /v1/issues` serves the queue that endpoint draws from.
 - **Production trigger:** a GitHub webhook on the `issues` / `labeled` event. When `agent:ready` is added, GitHub POSTs to our service and the run starts (push, real time). Polling the API for labelled issues is the fallback when no public URL is available.
 
 ## Happy path (step list)
