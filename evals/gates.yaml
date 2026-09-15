@@ -70,17 +70,16 @@ tiers:
     min_pass_rate: 0.90
     max_p95_latency_ms: 8000
 
-  # A ratchet, not a climb-down. Five of the nine P0 cases in this tier fail on
-  # defects the Day-7 triage already identified and named in failure-modes.csv
-  # as the scorer's, not the agent's: the refusal marker list (F1), the
-  # retry detector that cannot tell a retry from a correction (F3), and the
-  # setup.label ambiguity (F5). Holding the bar at 1.0 here would make this
-  # tier red until those are fixed, which is how a gate gets ignored. Pinned at
-  # today's measurement instead, so a further drop fails, and raised as each
-  # defect is closed.
+  # A ratchet. It was pinned at 0.44 while three scorer defects named in the
+  # Day-7 triage were still open — F5 (setup.label unset read as unlabelled),
+  # F1 (the refusal marker list), F3 (a retry detector that could not tell a
+  # retry from a correction). All three were false positives against an agent
+  # that had behaved correctly, and closing them moved the tier from 0.607 to
+  # 0.786 and P0 from 0.444 to 0.778 without touching a line of the agent.
+  # Raised to match, as a ratchet is supposed to be.
   single_turn:
-    min_pass_rate: 0.50
-    min_p0_pass_rate: 0.44
+    min_pass_rate: 0.70
+    min_p0_pass_rate: 0.75
     # Measured 2026-09-15: median case 3.4s, p95 13.3s, slowest 15.5s
     # (tool-011, which searches twice and reads the checkout). 16000 sits above
     # the observed p95 with room and still catches a doubling.

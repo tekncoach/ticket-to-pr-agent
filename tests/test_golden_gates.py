@@ -104,9 +104,8 @@ def test_the_shipped_floor_is_below_what_the_suite_measures():
     # switched off that afternoon — and a gate set *at* the observed floor
     # fails on the next draw, which is what happened: 0.60 came off three
     # passes and the fourth returned 0.571 with nothing changed.
-    observed_floor = 0.571
-    for tier in (None, "single_turn"):
-        assert load_gates(tier=tier)["min_pass_rate"] < observed_floor
+    assert load_gates()["min_pass_rate"] < 0.571          # the global catch-all
+    assert load_gates(tier="single_turn")["min_pass_rate"] < 0.786
 
 
 def test_the_model_tier_ratchets_p0_instead_of_holding_an_unmet_bar():
