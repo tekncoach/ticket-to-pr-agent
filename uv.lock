@@ -1203,6 +1203,7 @@ dependencies = [
 [package.optional-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pyyaml" },
 ]
 rag = [
     { name = "pgvector" },
@@ -1223,6 +1224,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pypdf", specifier = ">=6.18.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.3" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
     { name = "sqlite-vec", specifier = ">=0.1.9" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32" },
 ]
