@@ -1,0 +1,22 @@
+{
+  "version": "v1",
+  "frozen_at": "2026-09-15",
+  "sha256": "9c9ed09d69a651eb0c1b866616ab5f4a7ad54c3fef74094304c6d0a0c4f55b07",
+  "cases": 52,
+  "split": {
+    "core": 36,
+    "hard": 11,
+    "adversarial": 5
+  },
+  "tier": {
+    "agent_run": 6,
+    "retrieval": 17,
+    "single_turn": 29
+  },
+  "severity": {
+    "P0": 16,
+    "P1": 28,
+    "P2": 8
+  },
+  "observed_origin": 42
+}

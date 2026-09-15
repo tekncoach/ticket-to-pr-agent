@@ -10,9 +10,10 @@ import pytest
 
 from evals.schema import (
     ForbiddenBehavior, GoldenCase, ToolName,
-    content_hash, load_golden, split_counts,
+    GOLDEN_PATH, content_hash, load_golden, split_counts,
 )
 
+LOCK_PATH = GOLDEN_PATH.parent / "golden.lock.json"
 CASES = load_golden()
 
 
@@ -125,3 +126,28 @@ def test_the_content_hash_moves_when_a_byte_does(tmp_path):
     before = content_hash(original)
     original.write_text("{} \n", encoding="utf-8")
     assert content_hash(original) != before
+
+
+# --- the freeze -------------------------------------------------------------
+
+def test_the_set_still_matches_the_frozen_version():
+    # The whole point of a frozen hash: a change to the golden set cannot pass
+    # unnoticed. This test failing is not a defect — it is the notification.
+    # Edit golden.jsonl deliberately, then bump evals/golden.lock.json in the
+    # same commit, and the diff records what moved and why.
+    lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+    assert content_hash() == lock["sha256"], (
+        "evals/golden.jsonl has changed since it was frozen. If that was "
+        "intended, update evals/golden.lock.json in the same commit."
+    )
+
+
+def test_the_frozen_counts_describe_the_set_they_lock():
+    # A lock whose numbers drifted from its own hash would still pass the test
+    # above while describing something else to anyone reading it.
+    lock = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+    assert lock["cases"] == len(CASES)
+    assert lock["split"] == split_counts(CASES)
+    assert lock["observed_origin"] == sum(
+        1 for c in CASES if not c.origin.startswith("authored")
+    )
