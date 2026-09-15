@@ -174,3 +174,11 @@ def test_the_lock_can_be_rebuilt_from_the_set_alone():
     assert {k: v for k, v in rebuilt.items() if k != "frozen_at"} == {
         k: v for k, v in stored.items() if k != "frozen_at"
     }
+
+
+def test_ci_runs_the_gate_the_makefile_documents():
+    # The Makefile calls `test` the CI gate. A workflow that spells the same
+    # command out a second time drifts from it silently, and the copy CI runs
+    # is the one that wins.
+    workflow = (GOLDEN_PATH.parent.parent / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "run: make test" in workflow

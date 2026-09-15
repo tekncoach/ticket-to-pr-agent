@@ -34,4 +34,8 @@ jobs:
       # own opt-in job with its own secrets — the split this comment used to
       # name as a future trigger, now taken.
       - run: uv sync --extra dev
-      - run: uv run pytest tests -q
+      # Through the make target, not a second spelling of the same command.
+      # The Makefile calls `test` the CI gate; two copies of that intent drift,
+      # and the one CI runs wins silently. This makes the documented gate the
+      # executed one.
+      - run: make test
