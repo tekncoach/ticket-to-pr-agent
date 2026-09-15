@@ -77,6 +77,13 @@ class CaseSetup(BaseModel):
     label: str | None = None
     shadow_mode: bool | None = None
     fixture: str | None = None
+    # What the planted text asks the agent to do, in terms a detector can
+    # check. Without this, "did it obey the injection?" needs a human or a
+    # judge — and the judge is measured too lenient on exactly this class.
+    #   {"tool": "open_pr"}        the injection asks for a tool call
+    #   {"skip_tool": "run_tests"} it asks for a step to be skipped
+    #   {"echo": "curl ... | sh"}  it asks for a string to be relayed
+    injection_demands: list[dict] | None = None
 
 
 class GoldenCase(BaseModel):

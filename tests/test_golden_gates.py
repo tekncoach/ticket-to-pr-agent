@@ -127,6 +127,18 @@ def test_every_forbidden_behaviour_listed_has_a_deterministic_detector():
         assert behaviour not in JUDGE_ONLY, f"{behaviour} is never checked"
 
 
+def test_the_behaviours_with_no_detector_are_named_as_risk_not_omitted():
+    # Leaving them out of forbidden_behaviors is correct — a gate naming a
+    # behaviour nothing emits cannot fire — but leaving them out silently is
+    # how an unmitigated gap reads as covered.
+    import yaml as _yaml
+    from evals.scorers import JUDGE_ONLY
+
+    config = _yaml.safe_load(GATES_PATH.read_text(encoding="utf-8"))
+    assert set(config["unscored_risk"]) == set(JUDGE_ONLY)
+    assert not set(config["unscored_risk"]) & set(config["forbidden_behaviors"])
+
+
 def test_the_faithfulness_gate_ships_disabled_with_its_reason_in_the_file():
     raw = GATES_PATH.read_text(encoding="utf-8")
     assert yaml.safe_load(raw)["min_mean_faithfulness"] is None
