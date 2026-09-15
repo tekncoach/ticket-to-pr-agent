@@ -27,7 +27,7 @@ import anthropic
 
 from evals.runner import missing_fixture, run_case
 from evals.schema import GoldenCase, JUDGE, load_golden
-from evals.scorers import judge_prompt
+from evals.scorers import CITATION_RE, clamp_faithfulness, judge_prompt
 
 HERE = Path(__file__).parent
 SAMPLE_PATH = HERE / "judge-sample.jsonl"
@@ -56,6 +56,21 @@ PROBES = (
     ("probe-embellish", "add a plausible detail nobody retrieved", 2,
      lambda answer: answer + "\n\nThe policy also requires a 15-minute acknowledgement window."),
 )
+
+
+def _fabricates_citation(sample: dict) -> bool:
+    """Whether the answer cites something its own evidence does not contain.
+
+    Read back out of the prompt this file wrote, so it works on a stored sample
+    without re-running anything. The prompt format is ours, not scraped.
+
+    Reporting only. The evidence in a prompt is capped at 12k chars, so a
+    citation past the cut would read as fabricated here; the enforcement path
+    is scorers._invented_a_citation, which reads the whole trace.
+    """
+    prompt = sample["prompt"]
+    evidence = prompt.split("EVIDENCE:\n", 1)[-1].split("\n\nASSISTANT:", 1)[0]
+    return any(m not in evidence for m in CITATION_RE.findall(sample["answer"]))
 
 
 def _sha(text: str) -> str:
@@ -167,11 +182,20 @@ def _one_pass(client: anthropic.Anthropic, samples: dict, labels: dict,
     for case_id, sample in samples.items():
         verdict = _judge_once(client, sample["prompt"])
         human = labels[case_id]["score"]
-        rows.append({"id": case_id, "human": human, "judge": verdict.get("score"),
+        raw = verdict.get("score")
+        # What a consumer would actually see: score_case holds the judge to the
+        # rule it states and does not keep. Reported next to the raw score
+        # rather than replacing it — clamping before measuring would flatter
+        # the instrument instead of describing it.
+        clamped = clamp_faithfulness(
+            raw if isinstance(raw, (int, float)) else None,
+            ["invent_citation"] if _fabricates_citation(sample) else [])
+        rows.append({"id": case_id, "human": human, "judge": raw,
+                     "judge_clamped": clamped,
                      "rationale": (verdict.get("rationale") or "")[:300],
                      "unsupported": verdict.get("unsupported") or []})
-        if isinstance(verdict.get("score"), (int, float)):
-            pairs.append((human, int(verdict["score"])))
+        if isinstance(raw, (int, float)):
+            pairs.append((human, int(raw)))
         if not quiet:
             print(f"  {case_id:<12} human={human} judge={verdict.get('score')}")
     return rows, pairs
@@ -206,13 +230,20 @@ def calibrate(passes: int = 1) -> int:
         probes = [r for r in rows if r["id"].startswith("probe-")]
         caught = [r for r in probes
                   if isinstance(r["judge"], (int, float)) and r["judge"] <= 3]
+        caught_clamped = [r for r in probes
+                          if isinstance(r["judge_clamped"], (int, float))
+                          and r["judge_clamped"] <= 3]
         all_rows.append(rows)
         all_agreements.append(_agreement(pairs) if pairs else None)
         all_detection.append({"planted": len(probes), "caught": len(caught),
-                              "missed": [r["id"] for r in probes if r not in caught]})
+                              "caught_clamped": len(caught_clamped),
+                              "missed": [r["id"] for r in probes if r not in caught],
+                              "missed_clamped": [r["id"] for r in probes
+                                                 if r not in caught_clamped]})
         if passes > 1:
             print(f"  kappa={all_agreements[-1]['quadratic_kappa']} "
-                  f"probes={len(caught)}/{len(probes)}")
+                  f"probes={len(caught)}/{len(probes)} "
+                  f"clamped={len(caught_clamped)}/{len(probes)}")
 
     # Which cases the judge cannot make up its mind about. A case scored 1 on
     # one pass and 5 on the next is not a calibration result, it is a warning
@@ -234,8 +265,11 @@ def calibrate(passes: int = 1) -> int:
         "probe_detection": all_detection[0] if passes == 1 else {
             "planted": all_detection[0]["planted"],
             "caught": _spread([d["caught"] for d in all_detection]),
+            "caught_clamped": _spread([d["caught_clamped"] for d in all_detection]),
             "missed_every_pass": sorted(
                 set.intersection(*(set(d["missed"]) for d in all_detection))),
+            "missed_every_pass_clamped": sorted(
+                set.intersection(*(set(d["missed_clamped"]) for d in all_detection))),
         },
         "unparseable": sorted({r["id"] for rows in all_rows for r in rows
                                if r["judge"] is None}),

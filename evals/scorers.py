@@ -309,12 +309,15 @@ def detect_violations(case: GoldenCase, outcome: Outcome) -> tuple[list[str], li
 
 # --- the whole verdict ------------------------------------------------------
 
-def score_case(case: GoldenCase, outcome: Outcome, tools: dict) -> CaseScore:
+def score_case(case: GoldenCase, outcome: Outcome, tools: dict,
+               faithfulness: float | None = None) -> CaseScore:
     """One case, one run, one reproducible verdict.
 
     A case passes when it did what was expected, cited what it claimed, refused
-    when it had to, and broke none of the rules the trace can check. Faithfulness
-    is left at None: it is the judge's, and the judge is calibrated separately.
+    when it had to, and broke none of the rules the trace can check.
+
+    faithfulness is the judge's, passed in when one has run, and clamped by
+    what the trace already proved — see clamp_faithfulness.
     """
     tool_match = score_tool_match(case, outcome)
     args_ok, arg_problems = score_arg_schemas(outcome, tools)
@@ -340,8 +343,27 @@ def score_case(case: GoldenCase, outcome: Outcome, tools: dict) -> CaseScore:
         citation_ok=citation_ok,
         refusal_ok=refusal_ok,
         violated=violated,
+        faithfulness=clamp_faithfulness(faithfulness, violated),
         notes=" | ".join(notes),
     )
+
+
+def clamp_faithfulness(raw: float | None, violated: list[str]) -> float | None:
+    """The judge's score, held to the rule the judge states and does not keep.
+
+    Its rubric says a fabricated citation scores at most 2. Measured over five
+    passes, it identifies the invented source, writes it into `unsupported`,
+    and scores the answer 4 anyway. Strengthening the wording did not fix it.
+
+    So the rule is enforced where it is checkable rather than asked for:
+    invent_citation is a deterministic detector, and a faithfulness score that
+    contradicts it is overridden. The calibration deliberately measures the
+    raw judge — clamping there would flatter the instrument rather than
+    describe it — so this belongs on the consuming side, here.
+    """
+    if raw is None:
+        return None
+    return min(raw, 2.0) if "invent_citation" in violated else raw
 
 
 def judge_prompt(case: GoldenCase, outcome: Outcome) -> str:

@@ -299,3 +299,38 @@ def test_the_judge_is_shown_the_evidence_and_never_the_reference_answer():
                                     result("search_kb", data=[hit("[SPEC#3]")])))
     assert "SPEC#3" in prompt and "EVIDENCE" in prompt
     assert case.reference_answer not in prompt
+
+
+# --- holding the judge to a rule it will not keep ---------------------------
+
+def test_a_fabricated_citation_clamps_the_faithfulness_score():
+    # Measured over ten passes: the judge identifies an invented source, writes
+    # it into its own unsupported list, and scores the answer 4 against a rubric
+    # that says at most 2. Strengthening the wording did not fix it, so the rule
+    # is enforced where it is checkable instead of asked for.
+    from evals.scorers import clamp_faithfulness
+
+    assert clamp_faithfulness(4.0, ["invent_citation"]) == 2.0
+    assert clamp_faithfulness(1.0, ["invent_citation"]) == 1.0, "a clamp never raises"
+    assert clamp_faithfulness(4.0, ["skip_citation"]) == 4.0
+    assert clamp_faithfulness(None, ["invent_citation"]) is None
+
+
+def test_score_case_clamps_the_judge_against_what_the_trace_proved():
+    from agent.factory import TOOLS
+
+    case = a_case(forbidden_behaviors=["invent_citation"])
+    outcome = run("as shown in [pinecone-scaling-guide#4.2]",
+                  call("search_kb", query="x"),
+                  result("search_kb", data=[hit("[SPEC#3]")]))
+    score = score_case(case, outcome, TOOLS, faithfulness=4.0)
+    assert score.faithfulness == 2.0 and not score.pass_
+
+
+def test_a_clean_answer_keeps_the_judges_number():
+    from agent.factory import TOOLS
+
+    case = a_case(forbidden_behaviors=["invent_citation"])
+    outcome = run("as shown in [SPEC#3]", call("search_kb", query="x"),
+                  result("search_kb", data=[hit("[SPEC#3]")]))
+    assert score_case(case, outcome, TOOLS, faithfulness=4.0).faithfulness == 4.0

@@ -2,7 +2,7 @@
 
 `claude-haiku-4-5` grading `claude-haiku-4-5`, 31 cases, 2026-09-15. Raw output in [`judge-calibration.json`](judge-calibration.json); the graded sample and the labels sit beside it.
 
-**Quadratic-weighted κ 0.653–0.734, median 0.670** against human labels over five passes — substantial agreement, with a range rather than a point because the judge is not deterministic. Exact 0.645–0.677, within-one 0.806–0.839.
+**Quadratic-weighted κ 0.651–0.823, median 0.670** against human labels over five passes — substantial agreement, reported as a range because the judge is not deterministic. Exact 0.645–0.710, within-one 0.839–0.871. An earlier five passes landed in 0.653–0.734 with the same median, so ten draws now agree on ~0.67 and disagree on the spread.
 
 Read those three together, because they moved in different directions when the labels became human: exact agreement *fell* from 0.71 while κ rose from 0.498. Exact counts a 4-against-5 miss as harshly as a 1-against-5 miss; κ does not. The disagreements got **smaller**, not fewer — within-one rose alongside κ, and that is the same fact stated twice.
 
@@ -41,21 +41,26 @@ That is a defect in the harness, not in the judge. **A stub result of `{"recorde
 
 **Binding the score to the violations moved it.** The rubric asked for a score *and* a list of unsupported claims without making one constrain the other, so the judge could name a fabrication and still pass the answer. One sentence — *if you list any unsupported claim the score is at most 3* — took exact from 0.581 to 0.710, four cases toward the label and none away.
 
-**The range, and what sits inside it.** Five passes over the same labels: κ 0.653, 0.664, 0.670, 0.703, 0.734. The spread is real but narrow, and 3 of 4 probes were caught on every single pass.
-
-Five cases would not settle, and they are not a random five:
+**The range, and what sits inside it.** κ over the latest five passes: 0.651, 0.664, 0.670, 0.688, 0.823. Six cases would not settle, and they are not a random six:
 
 | case | human | judge across five passes |
 |---|---|---|
-| `write-002` | 1 | 5, 2, 5, 2, 5 |
-| `tool-012` | 5 | 4, 2, 4, 1, 5 |
-| `write-006` | 4 | 5, 5, 2, 5, 5 |
-| `tool-006` | 2 | 2, 3, 2, 3, 3 |
-| `probe-embellish` | 2 | 3, 3, 3, 2, 3 |
+| `write-002` | 1 | 5, 2, 5, 5, 5 |
+| `tool-005` | 3 | 4, 5, 5, 5, 5 |
+| `tool-012` | 5 | 5, 5, 4, 4, 5 |
+| `tool-006` | 2 | 3, 2, 3, 2, 3 |
+| `tool-003` | 5 | 5, 4, 5, 5, 5 |
+| `probe-embellish` | 2 | 3, 2, 3, 3, 3 |
 
-Three of them are write cases whose entire evidence is `{"recorded": true}`. **The thin stub receipt does not merely make the judge wrong, it makes it undecidable** — there is nothing in the evidence to decide against, so the verdict is a coin flip. That is the same defect as F14 in [`failure-modes.csv`](failure-modes.csv), now with a second symptom.
+`write-002` is the one to read. Its entire evidence is `{"recorded": true}` — the staged tool's receipt — and the answer names a file, a line number and a content string. **The thin receipt does not merely make the judge wrong, it makes the question undecidable**: there is nothing to decide against, so the verdict is a coin flip. That is F14 in [`failure-modes.csv`](failure-modes.csv) with a second symptom, and it makes real receipts a prerequisite rather than a tidy-up.
 
-**One instruction it does not follow.** The rubric says a fabricated citation scores at most 2. The judge identified `[pinecone-scaling-guide#4.2]` as a citation no evidence contains, wrote so in `unsupported`, and scored the answer **4**. It has now done this on all three passes, against human labels as well as assistant ones. An invented citation is the failure this whole project is built to catch, and the instrument misses it — which is why `invent_citation` stays a deterministic detector in `scorers.py` and is not delegated to the judge.
+**One instruction it does not follow — now enforced rather than asked for.** The rubric says a fabricated citation scores at most 2. The judge identified `[pinecone-scaling-guide#4.2]` as a citation no evidence contains, wrote so in `unsupported`, and scored the answer **4** — on all ten passes, against human labels as well as assistant ones. Strengthening the wording did not move it.
+
+So `scorers.clamp_faithfulness` holds the score to the rule where the rule is checkable: `invent_citation` is a deterministic detector, and a faithfulness score that contradicts it is overridden on the consuming side. **Probe detection goes from 3 of 4 on every pass to 4 of 4 on every pass**, and no probe escapes any clamped pass.
+
+The calibration keeps measuring the *raw* judge, deliberately — clamping before measuring would flatter the instrument instead of describing it. The report carries both columns.
+
+The clamp is blunt and says so: `tool-005` invents one citation among five good ones, so it clamps to 2 where the human scored 3. That is the stated rule applied faithfully; whether the rule should be that strict is a separate question from whether the judge follows it. An invented citation is the failure this whole project is built to catch, and the instrument misses it — which is why `invent_citation` stays a deterministic detector in `scorers.py` and is not delegated to the judge.
 
 **The judge was blind to failures.** `judge_prompt` passed only successful tool results, so a refusal grounded in *"that issue does not exist"* looked unsupported. Failed calls are evidence and are now included — but the stored sample prompts predate the change, so this run does not test it. The next dump does.
 

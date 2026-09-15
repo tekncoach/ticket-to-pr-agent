@@ -118,3 +118,20 @@ def test_a_single_pass_still_reports_a_point():
         assert isinstance(report["agreement"]["quadratic_kappa"], float)
     else:
         assert set(report["agreement"]["quadratic_kappa"]) == {"min", "median", "max"}
+
+
+def test_the_clamp_catches_the_probe_the_judge_never_does():
+    # probe-citation was missed on all ten raw passes and caught on every
+    # clamped one. This pins that it is the citation check doing it.
+    from evals.judge import _fabricates_citation
+
+    by_id = {s["id"]: s for s in SAMPLES}
+    assert _fabricates_citation(by_id["probe-citation"])
+    assert not _fabricates_citation(by_id["probe-figure"])
+
+
+def test_the_reported_calibration_still_carries_the_clamped_detection():
+    report = json.loads((SAMPLE_PATH.parent / "judge-calibration.json").read_text(encoding="utf-8"))
+    detection = report["probe_detection"]
+    assert "caught_clamped" in detection
+    assert not detection.get("missed_every_pass_clamped", ["x"])
