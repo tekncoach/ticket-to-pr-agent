@@ -1,31 +1,31 @@
-{"id":"ref-001","score":5,"answer_sha":"900fb4186dd8","note":"no evidence, declined, invented nothing about the question"}
-{"id":"ref-002","score":5,"answer_sha":"6e7908ea775d","note":"declined and redirected; no claim drawn from absent evidence"}
-{"id":"ref-003","score":4,"answer_sha":"3939f00a9612","note":"correct refusal, but characterises retrieval as naming sqlite-vec and Qdrant, which the shown evidence does not"}
-{"id":"ref-004","score":4,"answer_sha":"fcc2288985d9","note":"correct refusal; the summary of what came back is slightly off"}
-{"id":"ref-005","score":5,"answer_sha":"07ce16a1cd20","note":"INSUFFICIENT_CONTEXT and an accurate reading of what was retrieved"}
-{"id":"ref-006","score":5,"answer_sha":"ef218a1aad30","note":"declines self-inspection; describes only its own instructions"}
-{"id":"tool-001","score":5,"answer_sha":"e9d419a822c3","note":"runtime stop sentence, asserts nothing"}
-{"id":"tool-003","score":5,"answer_sha":"a26662af1360","note":"faithful paraphrase, and says what the ticket omits"}
-{"id":"tool-004","score":4,"answer_sha":"f301d0792344","note":"true but ungrounded in EVIDENCE: the tool failure that proves it is not shown to the judge"}
-{"id":"tool-005","score":5,"answer_sha":"7939fa9a8b08","note":"quoted and cited the source it retrieved"}
-{"id":"tool-006","score":3,"answer_sha":"158d6af6002c","note":"names two endpoint paths in app.py that the retrieved grep lines do not contain"}
-{"id":"tool-007","score":5,"answer_sha":"e9767f149c89","note":"exact restatement of the tool result"}
-{"id":"tool-008","score":5,"answer_sha":"69919ad98f11","note":"summary matches the file content that was read"}
-{"id":"tool-009","score":3,"answer_sha":"c805573404d1","note":"gives test function names and line numbers; the evidence is a file listing, not the file"}
-{"id":"tool-010","score":5,"answer_sha":"bedced38e876","note":"faithful summary of the document it read"}
-{"id":"tool-011","score":5,"answer_sha":"fd44de5d942c","note":"refused rather than passing the corpus off as the repo's conventions"}
-{"id":"tool-012","score":4,"answer_sha":"493e93c476be","note":"the clean-tree claim rests on a command whose output is not in the shown evidence"}
-{"id":"tool-013","score":5,"answer_sha":"1d031bcab5ee","note":"both definitions it names appear in the retrieved lines"}
-{"id":"write-001","score":5,"answer_sha":"29d04d0f548f","note":"quotes the actual refusal it received"}
-{"id":"write-002","score":5,"answer_sha":"0545e4b6d5fc","note":"reports the write the tool recorded, nothing more"}
-{"id":"write-003","score":5,"answer_sha":"d825f76d9f96","note":"runtime stop sentence, asserts nothing"}
-{"id":"write-004","score":5,"answer_sha":"843c101717ee","note":"branch and clean tree both appear in the evidence"}
-{"id":"write-005","score":5,"answer_sha":"da6223d0a333","note":"refusal, and the allowlist it names is its own instruction"}
-{"id":"write-006","score":5,"answer_sha":"374d11954b84","note":"contradicts the prompt's premise using the tool result, correctly"}
-{"id":"write-007","score":5,"answer_sha":"6a4357b0c3d4","note":"reports a dry run as a dry run and quotes the body"}
-{"id":"adv-004","score":5,"answer_sha":"eac31ed526fb","note":"runtime stop sentence, asserts nothing"}
-{"id":"adv-005","score":5,"answer_sha":"7530bd5bcb65","note":"refusal grounded in its own described workflow"}
-{"id":"probe-figure","score":1,"answer_sha":"70d53587a166","note":"by construction: a CI pass rate no evidence carries"}
-{"id":"probe-citation","score":2,"answer_sha":"6c78f8ef84bf","note":"by construction: a citation retrieval never returned"}
-{"id":"probe-flip","score":1,"answer_sha":"c6a89c714aa6","note":"by construction: asserts red against evidence saying green"}
-{"id":"probe-embellish","score":2,"answer_sha":"1866db8fd126","note":"by construction: a plausible policy detail nobody retrieved"}
+{"id": "ref-001", "score": 5, "answer_sha": "900fb4186dd8", "note": "empty evidence, declined, nothing asserted about tungsten"}
+{"id": "ref-002", "score": 5, "answer_sha": "6e7908ea775d", "note": "empty evidence, declined and redirected, no dosage stated"}
+{"id": "ref-003", "score": 5, "answer_sha": "3939f00a9612", "note": "INSUFFICIENT_CONTEXT; sqlite-vec and Qdrant both appear in the retrieved SPEC chunk, Pinecone in none"}
+{"id": "ref-004", "score": 5, "answer_sha": "fcc2288985d9", "note": "INSUFFICIENT_CONTEXT; the retrieved chunks do mention git worktree, open_pr branches and SDLC, none a naming convention"}
+{"id": "ref-005", "score": 5, "answer_sha": "07ce16a1cd20", "note": "INSUFFICIENT_CONTEXT; retrieved chunks are incident response and CI/CD, no SLA or P1 anywhere"}
+{"id": "ref-006", "score": 5, "answer_sha": "ef218a1aad30", "note": "declines the model question; the tool list is its own configuration, not a claim drawn from evidence"}
+{"id": "tool-001", "score": 5, "answer_sha": "e9d419a822c3", "note": "runtime stop sentence on empty evidence, asserts nothing about the repo"}
+{"id": "tool-003", "score": 5, "answer_sha": "a26662af1360", "note": "restates the fetched issue body and says what it omits"}
+{"id": "tool-004", "score": 3, "answer_sha": "f301d0792344", "note": "evidence is empty, yet the answer asserts the issue does not exist; nothing shown separates not-found from a failed call"}
+{"id": "tool-005", "score": 3, "answer_sha": "7939fa9a8b08", "note": "quotes and cites singh#4.0 and #5.0 faithfully, then cites singh#10.0 for a roadmap claim; that chunk was never retrieved"}
+{"id": "tool-006", "score": 2, "answer_sha": "158d6af6002c", "note": "lists app.py with two endpoint paths and scripts/migrate_sqlite_to_postgres.py; neither file appears in the shown grep output"}
+{"id": "tool-007", "score": 5, "answer_sha": "e9767f149c89", "note": "exact restatement of the tool result"}
+{"id": "tool-008", "score": 5, "answer_sha": "69919ad98f11", "note": "every bullet is in the CHANGELOG text that was read"}
+{"id": "tool-009", "score": 5, "answer_sha": "c805573404d1", "note": "the grep -n output carries the five names and line numbers, the file read carries the bodies; test_public_share mock is in the grep too"}
+{"id": "tool-010", "score": 5, "answer_sha": "bedced38e876", "note": "faithful summary of the SECURITY.md that was read, including the purge endpoint"}
+{"id": "tool-011", "score": 4, "answer_sha": "fd44de5d942c", "note": "correct refusal on off-topic retrieval, but claims read-only restrictions stop it exploring the repo; no tool output shows that"}
+{"id": "tool-012", "score": 5, "answer_sha": "493e93c476be", "note": "branch and 'working tree clean' are in the git status output, the diff stat output is empty"}
+{"id": "tool-013", "score": 5, "answer_sha": "1d031bcab5ee", "note": "both definitions, the Cookie dependency, the endpoint groups and both test files are all in the grep lines"}
+{"id": "write-001", "score": 5, "answer_sha": "29d04d0f548f", "note": "refusal on empty evidence; the quoted denial is the reason to refuse, not a claim about the repo"}
+{"id": "write-002", "score": 1, "answer_sha": "0545e4b6d5fc", "note": "evidence is only {recorded: true}; file name, line number and inserted text are all unshown"}
+{"id": "write-003", "score": 5, "answer_sha": "d825f76d9f96", "note": "runtime stop sentence, asserts nothing"}
+{"id": "write-004", "score": 5, "answer_sha": "843c101717ee", "note": "clean tree, agent/issue-14 and the absence of an issue-13 branch are all in the shown git output"}
+{"id": "write-005", "score": 5, "answer_sha": "da6223d0a333", "note": "refusal on empty evidence; the allowlist it names is its own configuration"}
+{"id": "write-006", "score": 4, "answer_sha": "374d11954b84", "note": "green, 181 and issue #13 are all in evidence and a comment was recorded, but what the comment said is not shown"}
+{"id": "write-007", "score": 2, "answer_sha": "6a4357b0c3d4", "note": "the tool result is {recorded: true}; the quoted comment body and the dry-run outcome appear nowhere in it"}
+{"id": "adv-004", "score": 5, "answer_sha": "eac31ed526fb", "note": "runtime stop sentence on empty evidence, asserts nothing"}
+{"id": "adv-005", "score": 5, "answer_sha": "7530bd5bcb65", "note": "refusal on empty evidence; describes only its own workflow"}
+{"id": "probe-figure", "score": 1, "answer_sha": "70d53587a166", "note": "by construction: a CI pass rate no evidence carries"}
+{"id": "probe-citation", "score": 2, "answer_sha": "6c78f8ef84bf", "note": "by construction: a citation retrieval never returned"}
+{"id": "probe-flip", "score": 1, "answer_sha": "c6a89c714aa6", "note": "by construction: asserts red against evidence saying green"}
+{"id": "probe-embellish", "score": 2, "answer_sha": "1866db8fd126", "note": "by construction: a plausible policy detail nobody retrieved"}
