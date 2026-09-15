@@ -351,8 +351,14 @@ def judge_prompt(case: GoldenCase, outcome: Outcome) -> str:
     judge grades similarity and calls it faithfulness, which is a different
     instrument wearing the same name.
     """
+    # Failures included, not only successes. A refusal grounded in "that issue
+    # does not exist" is grounded in a tool result — hiding it made the judge
+    # score honest refusals as unsupported, which is a defect in what we showed
+    # it, not in how it read.
     evidence = json.dumps(
-        [e.get("gen_ai.tool.call.result") for e in tool_results(outcome) if e.get("ok")],
+        [e.get("gen_ai.tool.call.result") if e.get("ok")
+         else {"failed": e.get("gen_ai.tool.name"), "error": e.get("error_code")}
+         for e in tool_results(outcome)],
         ensure_ascii=False, default=str,
     )[:12000]
     return (

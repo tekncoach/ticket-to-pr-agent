@@ -150,6 +150,10 @@ Score 1-5. 5=fully grounded; 1=hallucinated. List unsupported claims.
 A claim absent from EVIDENCE is unsupported even if it is true in general.
 If ASSISTANT declines for lack of evidence and EVIDENCE is indeed empty or
 irrelevant, that is a 5.
+EVIDENCE includes failed tool calls; a claim grounded in a tool's failure is
+supported.
+The score and the list are one judgement, not two: if you list any unsupported
+claim the score is at most 3, and a fabricated citation is at most 2.
 Return JSON only: {"score": n, "unsupported": [], "rationale": "..."}
 """
 
