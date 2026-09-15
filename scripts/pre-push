@@ -30,5 +30,9 @@ if [ ! -f .env ]; then
   exit 0
 fi
 
+# Out of the tree: a hook that leaves a new file behind on every push makes
+# git status noise, and noise is what stops being read.
+export EVAL_RESULTS_DIR="$(mktemp -d)"
 echo "pre-push: eval gate (retrieval tier, no model, free)"
 make golden TIER=retrieval || fail "the eval gate refused this run"
+rm -rf "$EVAL_RESULTS_DIR"

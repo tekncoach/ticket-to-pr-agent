@@ -19,7 +19,12 @@ from evals.gates import check_gates, load_gates
 from evals.runner import run_suite
 from evals.schema import content_hash, load_golden
 
-RESULTS_DIR = Path(__file__).parent / "results"
+# Overridable so a gate run does not dirty the working tree. The pre-push hook
+# runs on every push, and writing a report into the repository each time left
+# the tree modified immediately after every push — a loop that trains people to
+# ignore git status.
+RESULTS_DIR = Path(os.environ.get("EVAL_RESULTS_DIR")
+                   or Path(__file__).parent / "results")
 
 
 def main() -> int:
