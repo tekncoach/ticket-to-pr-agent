@@ -77,6 +77,16 @@ tiers:
   # that had behaved correctly, and closing them moved the tier from 0.607 to
   # 0.786 and P0 from 0.444 to 0.778 without touching a line of the agent.
   # Raised to match, as a ratchet is supposed to be.
+  # The whole loop against a real repository: read the ticket, edit, run the
+  # suite, fix what it says, open the pull request. Measured 2026-09-15 on
+  # issue #16 at 64s end to end — the global 12s ceiling is a single model
+  # call's budget and says nothing about a run that does real work. Pass rate
+  # stays at 1.0 because this tier has one case per run and half a pass means
+  # nothing.
+  agent_run:
+    min_pass_rate: 1.0
+    max_p95_latency_ms: 180000
+
   single_turn:
     min_pass_rate: 0.70
     min_p0_pass_rate: 0.75
