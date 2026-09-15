@@ -151,3 +151,26 @@ def test_the_frozen_counts_describe_the_set_they_lock():
     assert lock["observed_origin"] == sum(
         1 for c in CASES if not c.origin.startswith("authored")
     )
+
+
+def test_freezing_an_unchanged_set_is_a_no_op():
+    # A freeze that rewrites the date on every run produces a diff of its own,
+    # and a lock that changes without the set changing means nothing.
+    from evals.freeze import build_lock
+
+    assert build_lock(**{
+        "version": json.loads(LOCK_PATH.read_text(encoding="utf-8"))["version"],
+        "frozen_at": json.loads(LOCK_PATH.read_text(encoding="utf-8"))["frozen_at"],
+    }) == json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+
+
+def test_the_lock_can_be_rebuilt_from_the_set_alone():
+    # The lock the repository carries must be reproducible by anyone running
+    # the script, not only by whoever first typed the numbers in.
+    from evals.freeze import build_lock
+
+    rebuilt = build_lock()
+    stored = json.loads(LOCK_PATH.read_text(encoding="utf-8"))
+    assert {k: v for k, v in rebuilt.items() if k != "frozen_at"} == {
+        k: v for k, v in stored.items() if k != "frozen_at"
+    }

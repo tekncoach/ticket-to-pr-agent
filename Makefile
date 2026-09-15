@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-freeze golden-check docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -46,6 +46,32 @@ test:
 # and a built corpus; skips what it cannot reach instead of failing.
 eval:
 	uv run --env-file .env pytest evals -q -rs
+
+# Run the golden set (evals/golden.jsonl) and write a scored report into
+# evals/results/. Narrow it with TIER or SPLIT, or name cases with ID:
+#   make golden TIER=retrieval          # free, no model
+#   make golden TIER=single_turn        # the model deciding, nothing can write
+#   make golden SPLIT=adversarial
+#   make golden ID=ref-001 ID=tool-011
+# agent_run cases are never started from here — dollars and minutes, on demand.
+golden:
+	uv run --env-file .env python -m evals.runner \
+	  $(foreach t,$(TIER),--tier $(t)) \
+	  $(foreach s,$(SPLIT),--split $(s)) \
+	  $(foreach i,$(ID),--id $(i)) \
+	  $(if $(MODEL),--model $(MODEL),)
+
+# Rewrite evals/golden.lock.json from the set itself. Re-running it on an
+# unchanged set is a no-op — the frozen date moves only when the bytes do,
+# so the freeze never produces a diff of its own.
+# VERSION=v2 bumps the version alongside the content.
+golden-freeze:
+	uv run python -m evals.freeze $(if $(VERSION),--version $(VERSION),)
+
+# Verify the lock without writing: non-zero if golden.jsonl has drifted from
+# what was frozen, and it names which field moved.
+golden-check:
+	uv run python -m evals.freeze --check
 
 # Build and run the service in Docker. The compose file does not exist
 # yet — this target is a placeholder until deployment is built out.
