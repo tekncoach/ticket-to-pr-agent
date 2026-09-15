@@ -96,6 +96,12 @@ def main() -> int:
         print(gate_result)
     if metrics["unstable_cases"]:
         print(f"\nunstable across passes: {metrics['unstable_cases']}")
+    # A gate that cannot see its own flakiness gives false confidence exactly
+    # where being wrong costs most. This tier scores one case per invocation,
+    # so the pass rate it reports is a coin flip, not a rate.
+    if ok and tier == "agent_run" and args.passes == 1:
+        print(f"\n⚠ one pass, one case: this green is a draw, not a rate. "
+              f"Recorded history {gates.get('observed_history', 'unrecorded')}.")
     print(f"\n{'GATE PASS' if ok else 'GATE FAIL'} -> {path}")
 
     return 0 if (ok or args.no_gate) else 1

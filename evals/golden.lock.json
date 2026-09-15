@@ -1,11 +1,11 @@
 {
   "version": "v1",
   "frozen_at": "2026-09-15",
-  "sha256": "77d131cfe5d53a51dd7f67457937153c64574eecb323961347e3dd9d1f4c77a9",
+  "sha256": "e5701a1b7a1e614f3fecfec85c6315e55644e8744d7291e540353603937d994a",
   "cases": 52,
   "split": {
-    "core": 36,
-    "hard": 11,
+    "core": 35,
+    "hard": 12,
     "adversarial": 5
   },
   "tier": {

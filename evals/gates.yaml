@@ -127,7 +127,14 @@ tiers:
   # call's budget and says nothing about a run that does real work. Pass rate
   # stays at 1.0 because this tier has one case per run and half a pass means
   # nothing.
+  # ⚠ One case per invocation, so a green here is one draw, not a rate. The
+  # recorded history is 1 pass in 4 attempts (2026-09-15) — a number no single
+  # gate result can show. run.py prints that warning whenever this tier is
+  # gated on a single pass, and evals/traces/flow-001.json puts one canonical
+  # passing run into golden-replay so the tier has a regression signal at all.
+  # Trust a green here only alongside the history in evals/results/.
   agent_run:
+    observed_history: "1 pass / 4 attempts, 2026-09-15"
     min_pass_rate: 1.0
     max_p95_latency_ms: 180000
 

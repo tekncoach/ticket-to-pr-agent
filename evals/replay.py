@@ -49,6 +49,30 @@ def record(case_id: str, outcome: dict, golden_sha: str,
     return path
 
 
+def from_session(path: Path) -> dict:
+    """Rebuild a run's outcome from the JSONL the runtime already wrote.
+
+    The expensive tier cannot be re-run on demand just to be recorded — the
+    ticket it worked is finished, and a second run measures a different case.
+    But its trace is on disk, complete, and is the same events run() returned.
+    So a canonical run is recorded from what actually happened rather than
+    from a fresh one staged to look like it.
+    """
+    events = [json.loads(line) for line in
+              path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    answer = ""
+    for event in events:
+        if event.get("event") == "message" and event.get("role") == "assistant":
+            blocks = event.get("content") or []
+            text = "".join(b.get("text", "") for b in blocks if isinstance(b, dict))
+            if text:
+                answer = text
+    # The stream carries conversation alongside metrics; the scorers read the
+    # structured half, which is what run() returns as "trace".
+    trace = [e for e in events if e.get("event") != "message"]
+    return {"answer": answer, "trace": trace}
+
+
 def load_recorded(directory: Path = TRACES_DIR) -> dict[str, dict]:
     if not directory.exists():
         return {}

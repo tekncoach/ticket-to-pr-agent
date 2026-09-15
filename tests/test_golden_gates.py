@@ -143,3 +143,24 @@ def test_the_faithfulness_gate_ships_disabled_with_its_reason_in_the_file():
     raw = GATES_PATH.read_text(encoding="utf-8")
     assert yaml.safe_load(raw)["min_mean_faithfulness"] is None
     assert "JUDGE-CALIBRATION.md" in raw, "a disabled gate must carry its evidence"
+
+
+def test_the_expensive_tier_records_what_one_green_is_worth():
+    # It scores one case per invocation, so min_pass_rate: 1.0 is satisfied by
+    # a single coin flip. The observed history is 1 pass in 4 — a number no
+    # gate result can show, so it travels with the threshold.
+    gates = load_gates(tier="agent_run")
+    assert gates["min_pass_rate"] == 1.0
+    assert "observed_history" in gates
+
+
+def test_the_replay_set_covers_the_tier_that_proves_the_product():
+    # golden-replay is the only gate CI runs on every push. Without an
+    # agent_run trace in it, a regression in the ticket-to-PR loop produces no
+    # red anywhere.
+    from evals.replay import load_recorded
+    from evals.schema import load_golden
+
+    recorded = load_recorded()
+    tiers = {c.tier for c in load_golden() if c.id in recorded}
+    assert "agent_run" in tiers
