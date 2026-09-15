@@ -96,4 +96,39 @@ started on demand, before a prompt or model change — never in a gate.
 
 **The scorer is reproducible; the model is not.** `temperature=0` does not make
 an LLM deterministic, and one case has already scored 0.00 and 1.00 on the same
-input. Single-pass numbers here are point estimates.
+input. Single-pass numbers here are point estimates — which is why every
+threshold reads the lower bound of a range, and why `PASSES=3` makes the gate
+**stricter**, not noisier.
+
+## The gate, and where it runs
+
+`evals/gates.yaml` holds the thresholds; `make golden` compares against them and
+exits non-zero on a breach. `make golden NO_GATE=1` measures without blocking.
+
+Two rules decide every line of it. A threshold reads the **lower bound**, never
+the median. And a threshold with nothing to compare against is **skipped and
+says so** — a gate reporting green for checks it never ran is worse than no
+gate, because someone believes it.
+
+Two of them ship disabled, each with its reason in the file: faithfulness,
+because gating on a judge at κ 0.651–0.823 with six cases that flip on
+identical input is a barrier that opens at random; and cost, because nothing
+here hardcodes a vendor price list that goes stale in silence.
+
+**The gate does not run in CI, and the reason is data, not money.** A stateless
+runner has neither `data/kb/` — the corpus cites sources that are not ours to
+redistribute — nor the target checkout, which is built into the image rather
+than the repository. Without those, `search_kb` and `bash` have nothing to read,
+so a CI eval job would skip every case and report green for a suite it never
+ran. So the split is:
+
+| | where | what |
+|---|---|---|
+| CI, every push | GitHub | `make test` and `make golden-check` — hermetic, free, no secrets |
+| `make hooks` | your machine | `scripts/pre-push` adds the retrieval gate, which has the corpus |
+| on demand | anywhere with `.env` | `make golden TIER=single_turn PASSES=3` |
+
+The way to move the eval gate into CI is to stop needing the data: each run
+already writes its full trace, so scoring a *recorded* run costs nothing and
+needs no secrets. A replay gate over committed traces is the next thing that
+would make this cheap enough to be automatic. Not built.

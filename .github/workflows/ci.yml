@@ -39,3 +39,8 @@ jobs:
       # and the one CI runs wins silently. This makes the documented gate the
       # executed one.
       - run: make test
+      # Free, deterministic, no network and no model: it compares the golden
+      # set's sha256 to evals/golden.lock.json. The suite above already fails
+      # on a changed set, so this is the wider check — it also catches a lock
+      # whose version or counts drifted from the bytes they claim to describe.
+      - run: make golden-check

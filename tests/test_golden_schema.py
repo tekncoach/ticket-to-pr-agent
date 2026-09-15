@@ -176,6 +176,13 @@ def test_the_lock_can_be_rebuilt_from_the_set_alone():
     }
 
 
+def test_ci_checks_the_frozen_set_as_well_as_the_suite():
+    # Free, deterministic, no secrets — the one eval-side check a stateless
+    # runner can actually perform, so there is no reason for it not to run.
+    workflow = (GOLDEN_PATH.parent.parent / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "run: make golden-check" in workflow
+
+
 def test_ci_runs_the_gate_the_makefile_documents():
     # The Makefile calls `test` the CI gate. A workflow that spells the same
     # command out a second time drifts from it silently, and the copy CI runs

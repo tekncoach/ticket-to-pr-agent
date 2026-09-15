@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-freeze golden-check judge-dump judge-calibrate docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-freeze golden-check judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -85,6 +85,13 @@ judge-dump:
 #    draw is a number without error bars.
 judge-calibrate:
 	uv run --env-file .env python -m evals.judge --calibrate $(if $(PASSES),--passes $(PASSES),)
+
+# Install scripts/pre-push as the local gate. CI runs the hermetic half; the
+# eval half needs the corpus and the target checkout, which a stateless runner
+# does not have — see evals/README.md.
+hooks:
+	install -m 755 scripts/pre-push .git/hooks/pre-push
+	@echo "installed .git/hooks/pre-push"
 
 # Verify the lock without writing: non-zero if golden.jsonl has drifted from
 # what was frozen, and it names which field moved.
