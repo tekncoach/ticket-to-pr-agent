@@ -38,15 +38,28 @@ def record(case_id: str, outcome: dict, golden_sha: str,
     """Freeze one run so it can be scored again without being re-run."""
     directory.mkdir(exist_ok=True)
     path = directory / f"{case_id}.json"
+    # The whole outcome, not a hand-picked subset. Recording answer/error/trace
+    # and nothing else silently dropped refused_before_model, so flow-002 —
+    # a run the contract refused before the model — passed live and failed in
+    # replay, hidden under an aggregate that stayed green. Any key a scorer
+    # reads has to survive the round trip, and the only way to guarantee that
+    # without keeping two lists in sync is to keep everything.
     path.write_text(json.dumps({
+        **outcome,
         "case_id": case_id,
         "recorded_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
         "golden_sha256": golden_sha,
-        "answer": outcome.get("answer") or "",
-        "error": outcome.get("error"),
-        "trace": outcome.get("trace") or [],
     }, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
+
+
+# Written by record(), not by the run. Everything else in the file is outcome.
+_RECORD_KEYS = frozenset({"case_id", "recorded_at", "golden_sha256"})
+
+
+def outcome_of(recorded: dict) -> dict:
+    """The run as run() returned it, with the recording's own metadata removed."""
+    return {k: v for k, v in recorded.items() if k not in _RECORD_KEYS}
 
 
 def from_session(path: Path) -> dict:
@@ -102,7 +115,7 @@ def main() -> int:
             continue
         if run.get("golden_sha256") != content_hash():
             stale.append(case_id)
-        outcome = {"answer": run["answer"], "trace": run["trace"], "error": run.get("error")}
+        outcome = outcome_of(run)
         score = score_case(case, outcome, TOOLS)
         # Latency is not replayable — the number belongs to the machine that
         # ran it, not to this one. Zero here, and the latency gate skips.

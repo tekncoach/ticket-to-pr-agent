@@ -20,6 +20,7 @@ import os
 import time
 from pathlib import Path
 
+from agent.config import WORKSPACE
 from agent.errors import ErrorClass, ToolError
 from agent.factory import TOOLS, build_runtime
 from agent.runtime import Tool, ToolResult
@@ -43,10 +44,40 @@ BUILT_FIXTURES = ("ticket-body-carries", "unfixable-suite", "pr-already-open")
 
 
 def missing_fixture(case: GoldenCase) -> str | None:
+    """Why this case cannot run, or None.
+
+    A fixture is a claim about the world, so the claim is checked rather than
+    assumed. "pr-already-open" was marked built on the GitHub half alone — a
+    pull request does exist — while the agent sees the working tree, and with
+    that tree on main it re-implemented the finished ticket from scratch. The
+    run was scored as a failure of the agent instead of a failure of the
+    precondition. F22.
+    """
     fixture = case.setup.fixture if case.setup else None
-    if fixture and not fixture.startswith(BUILT_FIXTURES):
+    if not fixture:
+        return None
+    if not fixture.startswith(BUILT_FIXTURES):
         return fixture
+    if fixture.startswith("pr-already-open"):
+        issue = case.setup.issue
+        branch = _workspace_branch()
+        if branch != f"agent/issue-{issue}":
+            return (f"{fixture} — the pull request exists on GitHub, but the "
+                    f"agent reads the working tree, and it is on {branch!r} "
+                    f"rather than agent/issue-{issue}")
     return None
+
+
+def _workspace_branch() -> str | None:
+    import subprocess
+
+    try:
+        return subprocess.run(
+            ["git", "-C", str(WORKSPACE), "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True, text=True, timeout=10, check=True,
+        ).stdout.strip()
+    except Exception:  # noqa: BLE001 — no checkout is simply not the precondition
+        return None
 
 
 def _denied(detail: str) -> ToolResult:

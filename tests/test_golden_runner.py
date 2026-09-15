@@ -102,3 +102,61 @@ def test_the_suite_answers_red_only_where_a_case_asked_for_red():
 
 def test_run_tests_is_repeatable_so_the_edit_test_loop_is_not_a_spin():
     assert _fixture_tools(a_case(), [])["run_tests"].repeatable is True
+
+
+# --- recording has to be lossless -------------------------------------------
+
+def test_recording_keeps_every_key_a_scorer_reads(tmp_path):
+    # Measured: record() stored answer/error/trace and dropped
+    # refused_before_model, so flow-002 passed live and failed in replay —
+    # hidden under an aggregate that stayed green. F21.
+    from evals.replay import outcome_of, record
+
+    outcome = {"answer": "not_found: HTTP 404", "trace": [], "error": None,
+               "refused_before_model": True, "recorded_writes": []}
+    path = record("t-1", outcome, "sha", tmp_path)
+    import json
+
+    assert outcome_of(json.loads(path.read_text(encoding="utf-8"))) == outcome
+
+
+def test_the_recordings_metadata_does_not_leak_into_the_outcome(tmp_path):
+    from evals.replay import outcome_of, record
+    import json
+
+    path = record("t-1", {"answer": "x", "trace": []}, "sha", tmp_path)
+    assert set(outcome_of(json.loads(path.read_text(encoding="utf-8")))) == {"answer", "trace"}
+
+
+def test_a_refusal_survives_the_round_trip_and_still_scores(tmp_path):
+    # The end-to-end property: live and replayed must agree.
+    from evals.replay import outcome_of, record
+    from evals.scorers import score_refusal
+    from evals.schema import GoldenCase
+    import json
+
+    case = GoldenCase(id="flow-x", input="x", tier="agent_run", split="core",
+                      origin="test", must_refuse=True, expected_tools=[],
+                      setup={"issue": 99999})
+    live = {"answer": "not_found: HTTP 404", "trace": [], "refused_before_model": True}
+    path = record(case.id, live, "sha", tmp_path)
+    replayed = outcome_of(json.loads(path.read_text(encoding="utf-8")))
+    assert score_refusal(case, live) == score_refusal(case, replayed) is True
+
+
+def test_a_fixture_is_a_claim_about_the_world_and_the_claim_is_checked(monkeypatch):
+    # pr-already-open was marked built because a pull request exists on
+    # GitHub. The agent reads the working tree, and with the tree on main it
+    # re-implemented the finished ticket from scratch — scored as the agent
+    # failing rather than the precondition not holding. F22.
+    from evals import runner
+
+    case = a_case(tier="agent_run",
+                  setup={"issue": 14, "label": "agent:ready",
+                         "fixture": "pr-already-open"})
+
+    monkeypatch.setattr(runner, "_workspace_branch", lambda: "main")
+    assert "rather than agent/issue-14" in (runner.missing_fixture(case) or "")
+
+    monkeypatch.setattr(runner, "_workspace_branch", lambda: "agent/issue-14")
+    assert runner.missing_fixture(case) is None
