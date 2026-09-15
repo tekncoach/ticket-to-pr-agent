@@ -52,3 +52,33 @@ def test_a_bug_in_our_own_code_still_crashes_loud(monkeypatch):
     with patch.object(runtime, "_llm", side_effect=ValueError("not an API error")):
         with pytest.raises(ValueError):
             runtime.run("does not matter")
+
+
+# --- prompt caching ---------------------------------------------------------
+
+def test_the_conversation_carries_a_cache_breakpoint_at_its_end():
+    # Every turn resends the whole history, so without this the same nine turns
+    # are paid for at full price ten times. Measured on one multi-turn case:
+    # 51,076 tokens read from cache against 3,089 fresh.
+    from agent.runtime import AgentRuntime
+
+    marked = AgentRuntime._with_cache_breakpoint(
+        [{"role": "user", "content": "first"}, {"role": "assistant", "content": "second"}])
+    assert marked[-1]["content"][-1]["cache_control"] == {"type": "ephemeral"}
+    assert "cache_control" not in str(marked[0]), "only the last turn is marked"
+
+
+def test_marking_does_not_mutate_the_loop_s_own_history():
+    # The loop reuses its messages list every turn; leaving breakpoints behind
+    # would stack past the four the API allows.
+    from agent.runtime import AgentRuntime
+
+    history = [{"role": "user", "content": [{"type": "text", "text": "hi"}]}]
+    AgentRuntime._with_cache_breakpoint(history)
+    assert "cache_control" not in str(history)
+
+
+def test_an_empty_conversation_is_left_alone():
+    from agent.runtime import AgentRuntime
+
+    assert AgentRuntime._with_cache_breakpoint([]) == []

@@ -474,18 +474,62 @@ class AgentRuntime:
             return {"type": "adaptive"}
         return {"type": "enabled", "budget_tokens": self.thinking_budget_tokens}
 
+    # Every turn resends the whole conversation, so by turn ten we were paying
+    # full input price for the same nine turns, ten times. One completed ticket
+    # cost 150,889 input tokens for that reason. Two breakpoints fix it:
+    #
+    #   system   caches tools + the system prompt (the hierarchy is
+    #            tools -> system -> messages, so one mark covers both). Measured
+    #            at 601 tokens here, which is under Haiku 4.5's 4,096-token
+    #            minimum — so on Haiku this one is inert and costs nothing,
+    #            while on Sonnet and Opus (1,024 and 512) it pays.
+    #   history  caches the conversation up to the previous turn. This is the
+    #            one that matters: it grows past any minimum within a few turns
+    #            and is re-read on every subsequent call.
+    #
+    # Nothing is asserted about the saving — cache_read.input_tokens is already
+    # in the trace, so it is measured rather than assumed.
+    CACHE = {"type": "ephemeral"}
+
     def _llm(self, messages: list[dict], tools: list[dict]) -> anthropic.types.Message:
         kwargs: dict[str, Any] = dict(
             model=self.model,
             max_tokens=self.max_tokens,
-            system=self.system,
-            messages=messages,
+            system=[{"type": "text", "text": self.system,
+                     "cache_control": self.CACHE}],
+            messages=self._with_cache_breakpoint(messages),
             tools=tools,
         )
         thinking = self._thinking_param()
         if thinking is not None:
             kwargs["thinking"] = thinking
         return self._client.messages.create(**kwargs)
+
+    @classmethod
+    def _with_cache_breakpoint(cls, messages: list[dict]) -> list[dict]:
+        """Mark the end of the conversation so far as cacheable.
+
+        Copied rather than mutated: `messages` is the loop's own running
+        history, and leaving a breakpoint behind on every turn would stack
+        marks past the four the API allows.
+        """
+        if not messages:
+            return messages
+        marked = list(messages)
+        last = dict(marked[-1])
+        content = last.get("content")
+        if isinstance(content, str):
+            last["content"] = [{"type": "text", "text": content,
+                                "cache_control": cls.CACHE}]
+        elif isinstance(content, list) and content:
+            blocks = [dict(b) if isinstance(b, dict) else b for b in content]
+            if isinstance(blocks[-1], dict):
+                blocks[-1]["cache_control"] = cls.CACHE
+            last["content"] = blocks
+        else:
+            return messages
+        marked[-1] = last
+        return marked
 
     def _anthropic_tools(self) -> list[dict]:
         # Anthropic-defined tools are declared by type+name only — passing

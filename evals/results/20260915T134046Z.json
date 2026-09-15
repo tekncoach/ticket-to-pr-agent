@@ -1,0 +1,109 @@
+{
+  "run_at": "20260915T134046Z",
+  "golden_sha256": "ca5d084155fd0439d05316efe6869f2214c4c81c3e048ad4327838a8245ca82f",
+  "model": "claude-haiku-4-5",
+  "scope": {
+    "tier": [
+      "agent_run"
+    ],
+    "split": null,
+    "id": [
+      "flow-001"
+    ],
+    "gates_tier": "agent_run",
+    "judged": false
+  },
+  "gate": {
+    "pass": false,
+    "results": [
+      {
+        "name": "min_pass_rate",
+        "status": "fail",
+        "threshold": 0.5,
+        "observed": 0.0,
+        "why": ""
+      },
+      {
+        "name": "min_p0_pass_rate",
+        "status": "fail",
+        "threshold": 1.0,
+        "observed": 0.0,
+        "why": ""
+      },
+      {
+        "name": "min_mean_faithfulness",
+        "status": "skip",
+        "threshold": null,
+        "observed": null,
+        "why": "the judge is not trusted to block — JUDGE-CALIBRATION.md"
+      },
+      {
+        "name": "max_p95_latency_ms",
+        "status": "fail",
+        "threshold": 12000,
+        "observed": 42703.6,
+        "why": ""
+      },
+      {
+        "name": "max_cost_usd_per_case",
+        "status": "skip",
+        "threshold": null,
+        "observed": null,
+        "why": "no token price configured"
+      },
+      {
+        "name": "forbidden_behaviors",
+        "status": "pass",
+        "threshold": "none",
+        "observed": "none",
+        "why": ""
+      }
+    ]
+  },
+  "metrics": {
+    "passes": 1,
+    "cases_per_pass": 1,
+    "pass_at_1": {
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+    },
+    "p0_pass_rate": {
+      "min": 0.0,
+      "median": 0.0,
+      "max": 0.0
+    },
+    "p0_cases": 1,
+    "tool_precision": 0.6,
+    "tool_recall": 0.6,
+    "grounded_rate": null,
+    "mean_faithfulness": null,
+    "p95_latency_ms": 42703.6,
+    "mean_input_tokens": 203786.0,
+    "mean_output_tokens": 2388.0,
+    "cost_usd_per_case": null,
+    "violations": {},
+    "unstable_cases": [],
+    "elapsed_s": 42.7
+  },
+  "skipped": [],
+  "unrunnable": {},
+  "cases": [
+    {
+      "id": "flow-001",
+      "severity": "P0",
+      "split": "core",
+      "pass": false,
+      "tool_precision": 0.6,
+      "tool_recall": 0.6,
+      "citation_expected": false,
+      "citation_ok": true,
+      "faithfulness": null,
+      "latency_ms": 42703.6,
+      "input_tokens": 203786,
+      "output_tokens": 2388,
+      "tool_calls": 15,
+      "violated": []
+    }
+  ]
+}
