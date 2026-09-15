@@ -69,7 +69,7 @@ runnable at all — no case at this tier *can* write.
 
 [`judge.py`](judge.py) + [`JUDGE-CALIBRATION.md`](JUDGE-CALIBRATION.md) — the
 faithfulness judge and the measurement that decides whether to believe it.
-κ 0.688 against human labels, and still delegated nothing — its residual errors all lean toward passing invented content.
+κ 0.653–0.734 over five passes against human labels, and still delegated nothing — its residual errors all lean toward passing invented content.
 
 [`failure-modes.csv`](failure-modes.csv) + [`FAILURE-MODES.md`](FAILURE-MODES.md)
 — the triage of the first full pass, one row per case, checked against the runs

@@ -149,7 +149,35 @@ def _agreement(pairs: list[tuple[int, int]]) -> dict:
             "quadratic_kappa": round(kappa, 3) if kappa is not None else None}
 
 
-def calibrate() -> int:
+def _spread(values: list[float]) -> dict:
+    """min / median / max. Not a mean and a standard deviation: at five passes
+    a standard deviation says more about the estimator than about the judge,
+    and the range is the thing anyone actually wants quoted."""
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    median = (ordered[middle] if len(ordered) % 2
+              else (ordered[middle - 1] + ordered[middle]) / 2)
+    return {"min": round(min(ordered), 3), "median": round(median, 3),
+            "max": round(max(ordered), 3)}
+
+
+def _one_pass(client: anthropic.Anthropic, samples: dict, labels: dict,
+              quiet: bool = False) -> tuple[list[dict], list[tuple[int, int]]]:
+    rows, pairs = [], []
+    for case_id, sample in samples.items():
+        verdict = _judge_once(client, sample["prompt"])
+        human = labels[case_id]["score"]
+        rows.append({"id": case_id, "human": human, "judge": verdict.get("score"),
+                     "rationale": (verdict.get("rationale") or "")[:300],
+                     "unsupported": verdict.get("unsupported") or []})
+        if isinstance(verdict.get("score"), (int, float)):
+            pairs.append((human, int(verdict["score"])))
+        if not quiet:
+            print(f"  {case_id:<12} human={human} judge={verdict.get('score')}")
+    return rows, pairs
+
+
+def calibrate(passes: int = 1) -> int:
     samples = {json.loads(l)["id"]: json.loads(l)
                for l in SAMPLE_PATH.read_text(encoding="utf-8").splitlines() if l.strip()}
     labels = {json.loads(l)["id"]: json.loads(l)
@@ -170,34 +198,69 @@ def calibrate() -> int:
         return 1
 
     client = anthropic.Anthropic(api_key=os.environ["LLM_API_KEY"])
-    rows, pairs = [], []
-    for case_id, sample in samples.items():
-        verdict = _judge_once(client, sample["prompt"])
-        human = labels[case_id]["score"]
-        rows.append({"id": case_id, "human": human, "judge": verdict.get("score"),
-                     "rationale": (verdict.get("rationale") or "")[:300],
-                     "unsupported": verdict.get("unsupported") or []})
-        if isinstance(verdict.get("score"), (int, float)):
-            pairs.append((human, int(verdict["score"])))
-        print(f"  {case_id:<12} human={human} judge={verdict.get('score')}")
+    all_rows, all_agreements, all_detection = [], [], []
+    for index in range(passes):
+        if passes > 1:
+            print(f"pass {index + 1}/{passes}")
+        rows, pairs = _one_pass(client, samples, labels, quiet=passes > 1)
+        probes = [r for r in rows if r["id"].startswith("probe-")]
+        caught = [r for r in probes
+                  if isinstance(r["judge"], (int, float)) and r["judge"] <= 3]
+        all_rows.append(rows)
+        all_agreements.append(_agreement(pairs) if pairs else None)
+        all_detection.append({"planted": len(probes), "caught": len(caught),
+                              "missed": [r["id"] for r in probes if r not in caught]})
+        if passes > 1:
+            print(f"  kappa={all_agreements[-1]['quadratic_kappa']} "
+                  f"probes={len(caught)}/{len(probes)}")
 
-    probes = [r for r in rows if r["id"].startswith("probe-")]
-    caught = [r for r in probes if isinstance(r["judge"], (int, float)) and r["judge"] <= 3]
+    # Which cases the judge cannot make up its mind about. A case scored 1 on
+    # one pass and 5 on the next is not a calibration result, it is a warning
+    # that the aggregate hides a coin flip.
+    by_case: dict[str, list] = {}
+    for rows in all_rows:
+        for row in rows:
+            by_case.setdefault(row["id"], []).append(row["judge"])
+    unstable = {case_id: scores for case_id, scores in by_case.items()
+                if len({s for s in scores if s is not None}) > 1}
+
     report = {
         "judge_model": JUDGE_MODEL,
-        "agreement": _agreement(pairs) if pairs else None,
+        "passes": passes,
         # Reported apart from agreement, because they answer different
         # questions. Agreement says the judge and a person call the same
         # grounded answers grounded; detection says it notices when one is not.
         # A judge that always answers 5 scores well on the first and zero here.
-        "probe_detection": {"planted": len(probes), "caught": len(caught),
-                            "missed": [r["id"] for r in probes if r not in caught]},
-        "unparseable": [r["id"] for r in rows if r["judge"] is None],
-        "scores": rows,
+        "probe_detection": all_detection[0] if passes == 1 else {
+            "planted": all_detection[0]["planted"],
+            "caught": _spread([d["caught"] for d in all_detection]),
+            "missed_every_pass": sorted(
+                set.intersection(*(set(d["missed"]) for d in all_detection))),
+        },
+        "unparseable": sorted({r["id"] for rows in all_rows for r in rows
+                               if r["judge"] is None}),
+        "scores": all_rows[0],
     }
+    if passes == 1:
+        report["agreement"] = all_agreements[0]
+    else:
+        # A range, not a point. One draw of a non-deterministic instrument is
+        # a number without error bars, and quoting it as a result is the
+        # mistake this whole file exists to avoid.
+        report["agreement"] = {
+            "n": all_agreements[0]["n"],
+            **{metric: _spread([a[metric] for a in all_agreements])
+               for metric in ("exact", "within_one", "quadratic_kappa")},
+        }
+        report["per_pass"] = all_agreements
+        report["unstable_cases"] = unstable
+
     REPORT_PATH.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n",
                            encoding="utf-8")
-    print(f"\n{report['agreement']}\n-> {REPORT_PATH}")
+    print(f"\n{report['agreement']}")
+    if passes > 1:
+        print(f"unstable across passes: {sorted(unstable) or 'none'}")
+    print(f"-> {REPORT_PATH}")
     return 0
 
 
@@ -206,11 +269,14 @@ def main() -> int:
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--dump", action="store_true")
     group.add_argument("--calibrate", action="store_true")
+    parser.add_argument("--passes", type=int, default=1,
+                        help="run the judge N times on the same labels and "
+                             "report a range instead of a point")
     args = parser.parse_args()
     if args.dump:
         dump()
         return 0
-    return calibrate()
+    return calibrate(passes=args.passes)
 
 
 if __name__ == "__main__":

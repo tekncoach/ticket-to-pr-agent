@@ -78,3 +78,43 @@ def test_within_one_is_looser_than_exact():
     pairs = [(4, 5), (3, 4), (5, 5)]
     result = _agreement(pairs)
     assert result["within_one"] == 1.0 and result["exact"] < 1.0
+
+
+# --- sampling the judge -----------------------------------------------------
+
+def test_a_range_is_min_median_max_not_a_mean():
+    # At five passes a standard deviation describes the estimator more than the
+    # instrument; the range is what anyone actually quotes.
+    from evals.judge import _spread
+
+    assert _spread([0.65, 0.73, 0.67]) == {"min": 0.65, "median": 0.67, "max": 0.73}
+    assert _spread([1.0, 2.0])["median"] == 1.5
+
+
+def test_several_passes_report_a_range_and_name_what_would_not_settle(tmp_path, monkeypatch):
+    # The point of sampling: an aggregate that hides a coin flip is worse than
+    # no aggregate, so the unstable cases are named next to the range.
+    from evals import judge
+
+    swinging = iter([5, 1] * 200)
+    monkeypatch.setattr(judge, "_judge_once",
+                        lambda client, prompt: {"score": next(swinging),
+                                                "unsupported": [], "rationale": ""})
+    monkeypatch.setattr(judge.anthropic, "Anthropic", lambda **kw: object())
+    monkeypatch.setenv("LLM_API_KEY", "not-a-real-key")
+    monkeypatch.setattr(judge, "REPORT_PATH", tmp_path / "report.json")
+
+    assert judge.calibrate(passes=2) == 0
+    report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert report["passes"] == 2
+    assert set(report["agreement"]["quadratic_kappa"]) == {"min", "median", "max"}
+    assert report["unstable_cases"], "a judge alternating 5 and 1 must be reported unstable"
+
+
+def test_a_single_pass_still_reports_a_point():
+    # --passes defaults to 1, and a point estimate must not pretend to be a range.
+    report = json.loads((SAMPLE_PATH.parent / "judge-calibration.json").read_text(encoding="utf-8"))
+    if report.get("passes", 1) == 1:
+        assert isinstance(report["agreement"]["quadratic_kappa"], float)
+    else:
+        assert set(report["agreement"]["quadratic_kappa"]) == {"min", "median", "max"}

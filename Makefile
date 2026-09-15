@@ -76,8 +76,11 @@ judge-dump:
 
 # 2. score each line 1-5 in evals/judge-labels.jsonl, by hand, before step 3.
 # 3. calibrate runs the judge on that same sample and reports the agreement.
+#    PASSES=5 runs it five times on the same labels and reports a range plus
+#    the cases it could not settle — the judge is not deterministic, and one
+#    draw is a number without error bars.
 judge-calibrate:
-	uv run --env-file .env python -m evals.judge --calibrate
+	uv run --env-file .env python -m evals.judge --calibrate $(if $(PASSES),--passes $(PASSES),)
 
 # Verify the lock without writing: non-zero if golden.jsonl has drifted from
 # what was frozen, and it names which field moved.
