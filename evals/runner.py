@@ -26,7 +26,8 @@ from pathlib import Path
 from agent.errors import ErrorClass, ToolError
 from agent.factory import TOOLS, build_runtime
 from agent.runtime import Tool, ToolResult
-from evals.schema import CaseScore, GoldenCase, content_hash, load_golden
+from evals.metrics import case_facts, summarize
+from evals.schema import GoldenCase, content_hash, load_golden
 from evals.scorers import score_case
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -178,6 +179,9 @@ def main() -> None:
                         choices=["core", "hard", "adversarial"])
     parser.add_argument("--id", action="append", help="run only these case ids")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--passes", type=int, default=1,
+                        help="run every case N times and report a range; a "
+                             "single pass is a draw quoted as a promise")
     args = parser.parse_args()
 
     cases = load_golden()
@@ -188,49 +192,69 @@ def main() -> None:
     if args.id:
         cases = [c for c in cases if c.id in args.id]
 
-    scores: list[CaseScore] = []
+    passes: list[list[dict]] = []
     skipped: list[str] = []
     unrunnable: dict[str, str] = {}
     started = time.time()
-    for case in cases:
-        if (fixture := missing_fixture(case)) is not None:
-            unrunnable[case.id] = fixture
-            print(f"  ---- {case.id:<12} unrunnable: fixture not built")
-            continue
-        outcome = run_case(case, args.model)
-        if outcome is None:
-            skipped.append(case.id)
-            print(f"  skip {case.id}  ({case.tier}: run it on demand)")
-            continue
-        score = score_case(case, outcome, TOOLS)
-        scores.append(score)
-        mark = "pass" if score.pass_ else "FAIL"
-        print(f"  {mark} {case.id:<12} tools={score.tool_match:.2f} "
-              f"{'violated=' + ','.join(score.violated) if score.violated else ''}")
 
+    for index in range(args.passes):
+        if args.passes > 1:
+            print(f"pass {index + 1}/{args.passes}")
+        facts: list[dict] = []
+        for case in cases:
+            if (fixture := missing_fixture(case)) is not None:
+                unrunnable[case.id] = fixture
+                if index == 0:
+                    print(f"  ---- {case.id:<12} unrunnable: fixture not built")
+                continue
+            case_t0 = time.time()
+            outcome = run_case(case, args.model)
+            if outcome is None:
+                if index == 0:
+                    skipped.append(case.id)
+                    print(f"  skip {case.id}  ({case.tier}: run it on demand)")
+                continue
+            score = score_case(case, outcome, TOOLS)
+            facts.append(case_facts(case, outcome, score,
+                                    (time.time() - case_t0) * 1000))
+            if args.passes == 1:
+                mark = "pass" if score.pass_ else "FAIL"
+                print(f"  {mark} {case.id:<12} tools={score.tool_match:.2f} "
+                      f"{'violated=' + ','.join(score.violated) if score.violated else ''}")
+        passes.append(facts)
+        if args.passes > 1 and facts:
+            rate = sum(1 for f in facts if f["pass"]) / len(facts)
+            print(f"  {rate:.3f} pass rate")
+
+    metrics = summarize(passes, time.time() - started)
     RESULTS_DIR.mkdir(exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    passed = sum(1 for s in scores if s.pass_)
     report = {
         "run_at": stamp,
         "golden_sha256": content_hash(),
         "model": args.model or os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
-        "scored": len(scores), "passed": passed,
-        "pass_rate": round(passed / len(scores), 3) if scores else None,
+        "scope": {"tier": args.tier, "split": args.split, "id": args.id},
+        "metrics": metrics,
         "skipped": skipped,
         # Named separately from skipped: one is a case deferred by choice, the
         # other is coverage the set claims and does not have.
         "unrunnable": unrunnable,
-        "elapsed_s": round(time.time() - started, 1),
-        "scores": [json.loads(s.model_dump_json(by_alias=True)) for s in scores],
+        "cases": passes[0] if passes else [],
     }
     path = RESULTS_DIR / f"{stamp}.json"
-    path.write_text(json.dumps(report, indent=2, ensure_ascii=False) + "\n",
-                    encoding="utf-8")
-    print(f"\n{passed}/{len(scores)} passed"
-          f"{f', {len(skipped)} skipped' if skipped else ''}"
-          f"{f', {len(unrunnable)} unrunnable' if unrunnable else ''}"
-          f" in {report['elapsed_s']}s -> {path}")
+    body = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
+    path.write_text(body, encoding="utf-8")
+    # A real file, not a symlink: CI artifact upload and Windows checkouts both
+    # handle a copy, and a dangling symlink reads as a missing run rather than
+    # as a stale one.
+    (RESULTS_DIR / "latest.json").write_text(body, encoding="utf-8")
+
+    rate = metrics["pass_at_1"]
+    print(f"\npass@1 {rate['min']}..{rate['max']} (median {rate['median']})"
+          if rate else "\nnothing scored")
+    if metrics["unstable_cases"]:
+        print(f"unstable across passes: {metrics['unstable_cases']}")
+    print(f"-> {path}")
 
 
 if __name__ == "__main__":
