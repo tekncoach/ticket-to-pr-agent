@@ -55,6 +55,7 @@ eval:
 #   make golden SPLIT=adversarial
 #   make golden ID=ref-001 ID=tool-011
 #   make golden NO_GATE=1               # measure and report, always exit 0
+#   make golden TIER=single_turn JUDGE=1  # grade faithfulness too (a call per case)
 # agent_run cases are never started from here — dollars and minutes, on demand.
 golden:
 	uv run --env-file .env python -m evals.run \
@@ -63,6 +64,7 @@ golden:
 	  $(foreach i,$(ID),--id $(i)) \
 	  $(if $(PASSES),--passes $(PASSES),) \
 	  $(if $(NO_GATE),--no-gate,) \
+	  $(if $(JUDGE),--judge,) \
 	  $(if $(MODEL),--model $(MODEL),)
 
 # Rewrite evals/golden.lock.json from the set itself. Re-running it on an

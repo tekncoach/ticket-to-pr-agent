@@ -75,7 +75,10 @@ def check_gates(metrics: dict, gates: dict) -> tuple[bool, list[GateResult]]:
         threshold = gates.get(name)
         observed = worst(metrics.get(metric_key))
         if threshold is None:
-            results.append(GateResult(name, "skip", why=why_missing or "disabled"))
+            # Still reports what it saw. A disabled gate that hides its own
+            # number is a number nobody looks at until the gate is re-enabled.
+            results.append(GateResult(name, "skip", observed=observed,
+                                      why=why_missing or "disabled"))
         elif observed is None:
             results.append(GateResult(name, "skip", threshold,
                                       why="not measured in this run"))
@@ -87,7 +90,8 @@ def check_gates(metrics: dict, gates: dict) -> tuple[bool, list[GateResult]]:
         threshold = gates.get(name)
         observed = _upper_bound(metrics.get(metric_key))
         if threshold is None:
-            results.append(GateResult(name, "skip", why=why_missing or "disabled"))
+            results.append(GateResult(name, "skip", observed=observed,
+                                      why=why_missing or "disabled"))
         elif observed is None:
             results.append(GateResult(name, "skip", threshold,
                                       why="not measured in this run"))

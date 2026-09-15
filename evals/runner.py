@@ -168,13 +168,21 @@ def run_case(case: GoldenCase, model: str | None = None) -> dict | None:
 
 
 def run_suite(cases: list[GoldenCase], passes: int = 1, model: str | None = None,
-              verbose: bool = True) -> dict:
+              verbose: bool = True, judge: bool = False) -> dict:
     """Run every case `passes` times and summarise. No thresholds here.
 
     Separate from the command that decides: this knows how to execute the set,
     evals/run.py knows what result is acceptable. One file doing both would put
     "how a case runs" and "whether we ship" behind the same edit.
+
+    judge=False by default. Grading faithfulness costs a model call per case
+    and the instrument is not trusted to block anything, so it is opted into
+    rather than paid for on every run.
     """
+    judge_client = None
+    if judge:
+        from evals.judge import build_client
+        judge_client = build_client()
     scored: list[list[dict]] = []
     skipped: list[str] = []
     unrunnable: dict[str, str] = {}
@@ -192,14 +200,24 @@ def run_suite(cases: list[GoldenCase], passes: int = 1, model: str | None = None
                 continue
             case_t0 = time.time()
             outcome = run_case(case, model)
+            # Stopped before the judge runs. Grading is measurement, not the
+            # thing measured, and letting it inside the window made p95 latency
+            # jump from ~5s to 13.7s the first time judging was switched on.
+            case_ms = (time.time() - case_t0) * 1000
             if outcome is None:
                 if index == 0:
                     skipped.append(case.id)
                     if verbose:
                         print(f"  skip {case.id}  ({case.tier}: run it on demand)")
                 continue
-            score = score_case(case, outcome, TOOLS)
-            facts.append(case_facts(case, outcome, score, (time.time() - case_t0) * 1000))
+            faithfulness = None
+            if judge_client is not None:
+                from evals.judge import score_faithfulness
+                faithfulness = score_faithfulness(judge_client, case, outcome)
+            # The raw score goes in and comes back clamped: score_case holds the
+            # judge to the citation rule it states and does not keep.
+            score = score_case(case, outcome, TOOLS, faithfulness=faithfulness)
+            facts.append(case_facts(case, outcome, score, case_ms))
             if passes == 1 and verbose:
                 mark = "pass" if score.pass_ else "FAIL"
                 print(f"  {mark} {case.id:<12} tools={score.tool_match:.2f} "

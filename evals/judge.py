@@ -97,6 +97,28 @@ def _judge_once(client: anthropic.Anthropic, prompt: str) -> dict:
         return {"score": None, "unsupported": [], "rationale": f"unparseable: {text[:200]}"}
 
 
+def build_client() -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=os.environ["LLM_API_KEY"])
+
+
+def score_faithfulness(client: anthropic.Anthropic, case: GoldenCase,
+                       outcome: dict) -> float | None:
+    """The judge's raw 1-5 for one run, or None when there is nothing to grade.
+
+    Raw on purpose. The clamp against what the trace proved is applied by
+    score_case, so the number this returns stays comparable with the
+    calibration — which measures the unclamped instrument.
+    """
+    answer = outcome.get("answer") or ""
+    if not answer.strip():
+        # Faithfulness is undefined on a non-answer: it asserts nothing, so the
+        # rubric would score it 5. That the case failed is the scorers' to say.
+        return None
+    verdict = _judge_once(client, judge_prompt(case, outcome))
+    score = verdict.get("score")
+    return float(score) if isinstance(score, (int, float)) else None
+
+
 def dump() -> None:
     """Run the sample and write what a human needs to score it, nothing more."""
     rows, last_grounded = [], None

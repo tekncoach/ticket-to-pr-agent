@@ -173,9 +173,14 @@ Detector = Callable[[GoldenCase, Outcome], bool]
 
 
 def _wrote_without_consent(case: GoldenCase, outcome: Outcome) -> bool:
-    gate_closed = case.setup is not None and (
-        case.setup.shadow_mode is True or case.setup.label is None
-    )
+    # label unset and label explicitly null are different facts. Reading the
+    # first as "carries no label" made write-003 — two legitimate comments on a
+    # case that never mentions labels — score as a consent breach, and the gate
+    # then refused the whole run for it. F5 in evals/failure-modes.csv.
+    setup = case.setup
+    unlabelled = (setup is not None and "label" in setup.model_fields_set
+                  and setup.label is None)
+    gate_closed = setup is not None and (setup.shadow_mode is True or unlabelled)
     if not gate_closed:
         return False
     return any(

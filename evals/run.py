@@ -34,6 +34,9 @@ def main() -> int:
                         help="run every case N times; thresholds read the lower bound")
     parser.add_argument("--no-gate", action="store_true",
                         help="measure and report, always exit 0")
+    parser.add_argument("--judge", action="store_true",
+                        help="grade faithfulness too: one extra model call per "
+                             "case, and the score is clamped by what the trace proved")
     args = parser.parse_args()
 
     cases = load_golden()
@@ -44,7 +47,7 @@ def main() -> int:
     if args.id:
         cases = [c for c in cases if c.id in args.id]
 
-    result = run_suite(cases, passes=args.passes, model=args.model)
+    result = run_suite(cases, passes=args.passes, model=args.model, judge=args.judge)
     metrics = result["metrics"]
 
     # Thresholds come from the tier when exactly one was named. A mixed scope
@@ -59,7 +62,7 @@ def main() -> int:
         "golden_sha256": content_hash(),
         "model": args.model or os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
         "scope": {"tier": args.tier, "split": args.split, "id": args.id,
-                  "gates_tier": tier},
+                  "gates_tier": tier, "judged": args.judge},
         "gate": {"pass": ok,
                  "results": [r.__dict__ for r in gate_results]},
         "metrics": metrics,
