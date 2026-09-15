@@ -1,5 +1,5 @@
 {
-  "run_at": "20260915T125106Z",
+  "run_at": "20260915T125105Z",
   "golden_sha256": "9c9ed09d69a651eb0c1b866616ab5f4a7ad54c3fef74094304c6d0a0c4f55b07",
   "model": "claude-haiku-4-5",
   "scope": {
@@ -40,7 +40,7 @@
         "name": "max_p95_latency_ms",
         "status": "pass",
         "threshold": 8000,
-        "observed": 570.1,
+        "observed": 507.2,
         "why": ""
       },
       {
@@ -73,13 +73,13 @@
     "tool_recall": 1.0,
     "grounded_rate": 0.0,
     "mean_faithfulness": null,
-    "p95_latency_ms": 570.1,
+    "p95_latency_ms": 507.2,
     "mean_input_tokens": 0.0,
     "mean_output_tokens": 0.0,
     "cost_usd_per_case": null,
     "violations": {},
     "unstable_cases": [],
-    "elapsed_s": 0.6
+    "elapsed_s": 0.5
   },
   "skipped": [],
   "unrunnable": {},
@@ -94,7 +94,7 @@
       "citation_expected": true,
       "citation_ok": false,
       "faithfulness": null,
-      "latency_ms": 570.1,
+      "latency_ms": 507.2,
       "input_tokens": 0,
       "output_tokens": 0,
       "tool_calls": 1,

@@ -73,6 +73,10 @@ def case_facts(case: GoldenCase, outcome: dict, score: CaseScore,
         "input_tokens": usage_in,
         "output_tokens": usage_out,
         "tool_calls": len(tool_results(outcome)),
+        # Carried so the regression gate can read them. Only what the trace
+        # proved — score_case reports the judge-only ones as unchecked, and a
+        # gate must not treat "nobody looked" as "did not happen".
+        "violated": list(score.violated),
     }
 
 
@@ -100,6 +104,10 @@ def summarize(passes: list[list[dict]], elapsed_s: float) -> dict[str, Any]:
     p0 = [f for f in flat if f["severity"] == "P0"]
     grounded = [f for f in flat if f["citation_expected"]]
     faithfulness = [f["faithfulness"] for f in flat if f["faithfulness"] is not None]
+    violations: dict[str, int] = {}
+    for fact in flat:
+        for behaviour in fact.get("violated") or []:
+            violations[behaviour] = violations.get(behaviour, 0) + 1
 
     # Which cases answered differently between passes. The suite average can
     # hold still while individual cases flip, and it is the flipping that
@@ -139,6 +147,7 @@ def summarize(passes: list[list[dict]], elapsed_s: float) -> dict[str, Any]:
         # None unless PRICE_PER_MTOK_INPUT/OUTPUT are set: this repo does not
         # hardcode a vendor price list that goes stale without telling anyone.
         "cost_usd_per_case": _cost_usd(flat),
+        "violations": dict(sorted(violations.items())),
         "unstable_cases": sorted(cid for cid, seen in by_case.items() if len(seen) > 1),
         "elapsed_s": round(elapsed_s, 1),
     }

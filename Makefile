@@ -47,18 +47,22 @@ test:
 eval:
 	uv run --env-file .env pytest evals -q -rs
 
-# Run the golden set (evals/golden.jsonl) and write a scored report into
-# evals/results/. Narrow it with TIER or SPLIT, or name cases with ID:
-#   make golden TIER=retrieval          # free, no model
-#   make golden TIER=single_turn        # the model deciding, nothing can write
+# Run the golden set, measure it, compare it to evals/gates.yaml, and exit
+# non-zero on a breach. Thresholds read the LOWER bound of a range, so
+# PASSES=3 makes the gate stricter, not noisier.
+#   make golden TIER=retrieval          # free, no model — the PR gate
+#   make golden TIER=single_turn PASSES=3
 #   make golden SPLIT=adversarial
 #   make golden ID=ref-001 ID=tool-011
+#   make golden NO_GATE=1               # measure and report, always exit 0
 # agent_run cases are never started from here — dollars and minutes, on demand.
 golden:
-	uv run --env-file .env python -m evals.runner \
+	uv run --env-file .env python -m evals.run \
 	  $(foreach t,$(TIER),--tier $(t)) \
 	  $(foreach s,$(SPLIT),--split $(s)) \
 	  $(foreach i,$(ID),--id $(i)) \
+	  $(if $(PASSES),--passes $(PASSES),) \
+	  $(if $(NO_GATE),--no-gate,) \
 	  $(if $(MODEL),--model $(MODEL),)
 
 # Rewrite evals/golden.lock.json from the set itself. Re-running it on an

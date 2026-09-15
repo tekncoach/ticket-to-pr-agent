@@ -43,6 +43,11 @@ rag = [
 ]
 dev = [
     "pytest>=8.3",
+    # evals/gates.py reads the thresholds file, and tests/ asserts against it.
+    # Declared rather than inherited: it arrives transitively today, and a
+    # transitive dependency disappears when its parent drops it — here that
+    # would take the CI gate's own config parser with it.
+    "pyyaml>=6.0",
 ]
 
 # An application, not an installable library — uv manages the venv + deps

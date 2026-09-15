@@ -16,18 +16,14 @@
 # run from here — dollars and minutes, on demand, never in a gate.
 from __future__ import annotations
 
-import argparse
-import json
-import os
 import time
-from datetime import datetime, timezone
 from pathlib import Path
 
 from agent.errors import ErrorClass, ToolError
 from agent.factory import TOOLS, build_runtime
 from agent.runtime import Tool, ToolResult
 from evals.metrics import case_facts, summarize
-from evals.schema import GoldenCase, content_hash, load_golden
+from evals.schema import GoldenCase
 from evals.scorers import score_case
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -171,91 +167,52 @@ def run_case(case: GoldenCase, model: str | None = None) -> dict | None:
     return None  # agent_run: not from here
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the golden set.")
-    parser.add_argument("--tier", action="append",
-                        choices=["retrieval", "single_turn", "agent_run"])
-    parser.add_argument("--split", action="append",
-                        choices=["core", "hard", "adversarial"])
-    parser.add_argument("--id", action="append", help="run only these case ids")
-    parser.add_argument("--model", default=None)
-    parser.add_argument("--passes", type=int, default=1,
-                        help="run every case N times and report a range; a "
-                             "single pass is a draw quoted as a promise")
-    args = parser.parse_args()
+def run_suite(cases: list[GoldenCase], passes: int = 1, model: str | None = None,
+              verbose: bool = True) -> dict:
+    """Run every case `passes` times and summarise. No thresholds here.
 
-    cases = load_golden()
-    if args.tier:
-        cases = [c for c in cases if c.tier in args.tier]
-    if args.split:
-        cases = [c for c in cases if c.split in args.split]
-    if args.id:
-        cases = [c for c in cases if c.id in args.id]
-
-    passes: list[list[dict]] = []
+    Separate from the command that decides: this knows how to execute the set,
+    evals/run.py knows what result is acceptable. One file doing both would put
+    "how a case runs" and "whether we ship" behind the same edit.
+    """
+    scored: list[list[dict]] = []
     skipped: list[str] = []
     unrunnable: dict[str, str] = {}
     started = time.time()
 
-    for index in range(args.passes):
-        if args.passes > 1:
-            print(f"pass {index + 1}/{args.passes}")
+    for index in range(passes):
+        if passes > 1 and verbose:
+            print(f"pass {index + 1}/{passes}")
         facts: list[dict] = []
         for case in cases:
             if (fixture := missing_fixture(case)) is not None:
                 unrunnable[case.id] = fixture
-                if index == 0:
+                if index == 0 and verbose:
                     print(f"  ---- {case.id:<12} unrunnable: fixture not built")
                 continue
             case_t0 = time.time()
-            outcome = run_case(case, args.model)
+            outcome = run_case(case, model)
             if outcome is None:
                 if index == 0:
                     skipped.append(case.id)
-                    print(f"  skip {case.id}  ({case.tier}: run it on demand)")
+                    if verbose:
+                        print(f"  skip {case.id}  ({case.tier}: run it on demand)")
                 continue
             score = score_case(case, outcome, TOOLS)
-            facts.append(case_facts(case, outcome, score,
-                                    (time.time() - case_t0) * 1000))
-            if args.passes == 1:
+            facts.append(case_facts(case, outcome, score, (time.time() - case_t0) * 1000))
+            if passes == 1 and verbose:
                 mark = "pass" if score.pass_ else "FAIL"
                 print(f"  {mark} {case.id:<12} tools={score.tool_match:.2f} "
                       f"{'violated=' + ','.join(score.violated) if score.violated else ''}")
-        passes.append(facts)
-        if args.passes > 1 and facts:
-            rate = sum(1 for f in facts if f["pass"]) / len(facts)
-            print(f"  {rate:.3f} pass rate")
+        scored.append(facts)
+        if passes > 1 and facts and verbose:
+            print(f"  {sum(1 for f in facts if f['pass']) / len(facts):.3f} pass rate")
 
-    metrics = summarize(passes, time.time() - started)
-    RESULTS_DIR.mkdir(exist_ok=True)
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    report = {
-        "run_at": stamp,
-        "golden_sha256": content_hash(),
-        "model": args.model or os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
-        "scope": {"tier": args.tier, "split": args.split, "id": args.id},
-        "metrics": metrics,
+    return {
+        "metrics": summarize(scored, time.time() - started),
         "skipped": skipped,
         # Named separately from skipped: one is a case deferred by choice, the
         # other is coverage the set claims and does not have.
         "unrunnable": unrunnable,
-        "cases": passes[0] if passes else [],
+        "cases": scored[0] if scored else [],
     }
-    path = RESULTS_DIR / f"{stamp}.json"
-    body = json.dumps(report, indent=2, ensure_ascii=False) + "\n"
-    path.write_text(body, encoding="utf-8")
-    # A real file, not a symlink: CI artifact upload and Windows checkouts both
-    # handle a copy, and a dangling symlink reads as a missing run rather than
-    # as a stale one.
-    (RESULTS_DIR / "latest.json").write_text(body, encoding="utf-8")
-
-    rate = metrics["pass_at_1"]
-    print(f"\npass@1 {rate['min']}..{rate['max']} (median {rate['median']})"
-          if rate else "\nnothing scored")
-    if metrics["unstable_cases"]:
-        print(f"unstable across passes: {metrics['unstable_cases']}")
-    print(f"-> {path}")
-
-
-if __name__ == "__main__":
-    main()
