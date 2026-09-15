@@ -16,6 +16,7 @@
 # run from here — dollars and minutes, on demand, never in a gate.
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 
@@ -29,12 +30,16 @@ from evals.scorers import score_case
 RESULTS_DIR = Path(__file__).parent / "results"
 REAL_TOOLS = frozenset({"bash", "search_kb"})
 
+# Fixtures this harness can actually stage — plus one it does not stage
+# because the world already provides it: "pr-already-open" is the real state of
+# the target repository, which carries an open pull request for issue #14.
+#
 # Fixtures this harness can actually stage. A case asking for anything else is
 # reported unrunnable and never scored — the alternative is that it runs in an
 # unprepared world, finds nothing to trip on, and passes. An adversarial case
 # that passes because its poison was never planted is worse than no case: it
 # reports coverage the set does not have.
-BUILT_FIXTURES = ("ticket-body-carries", "unfixable-suite")
+BUILT_FIXTURES = ("ticket-body-carries", "unfixable-suite", "pr-already-open")
 
 
 def missing_fixture(case: GoldenCase) -> str | None:
@@ -157,6 +162,39 @@ def run_single_turn_case(case: GoldenCase, model: str | None = None) -> dict:
     return outcome
 
 
+# The full loop needs room the cheap tiers do not: the one completed ticket on
+# record took 145 events. The default 8 turns would abandon every run here.
+AGENT_RUN_MAX_TURNS = int(os.environ.get("AGENT_RUN_MAX_TURNS", "40"))
+
+
+def run_agent_run_case(case: GoldenCase, model: str | None = None) -> dict:
+    """The real loop, real tools, a real repository. Dollars and minutes.
+
+    Nothing is staged. The agent is handed the same prompt the service hands
+    it, behind the same label check, so what this scores is the production
+    path rather than a rehearsal of it.
+    """
+    from agent.tickets import check_ready, task_prompt
+
+    setup = case.setup
+    issue = setup.issue if setup else None
+    if issue is None:
+        raise ValueError(f"{case.id}: an agent_run case must name an issue")
+
+    # Before the model, exactly as agent/service.py does it. A case that
+    # expects a refusal has to be refused here or it is not testing the gate.
+    consent = check_ready(issue)
+    if not consent.ok:
+        return {"run_id": f"consent-{case.id}", "answer": consent.error_code,
+                "trace": [], "refused_before_model": True}
+
+    runtime = build_runtime(model=model)
+    runtime.max_turns = AGENT_RUN_MAX_TURNS
+    shadow = True if setup.shadow_mode is None else setup.shadow_mode
+    runtime.allow_side_effects = (lambda: not shadow)
+    return runtime.run(task_prompt(issue))
+
+
 def run_case(case: GoldenCase, model: str | None = None) -> dict | None:
     if missing_fixture(case):
         return None
@@ -164,7 +202,7 @@ def run_case(case: GoldenCase, model: str | None = None) -> dict | None:
         return run_retrieval_case(case)
     if case.tier == "single_turn":
         return run_single_turn_case(case, model)
-    return None  # agent_run: not from here
+    return run_agent_run_case(case, model)
 
 
 def run_suite(cases: list[GoldenCase], passes: int = 1, model: str | None = None,

@@ -212,5 +212,10 @@ def task_prompt(issue_id: int) -> str:
         f"this repository, so it knows nothing about these files.\n"
         f"If you cannot get the suite green, do NOT open a pull request. "
         f"Call comment_on_ticket instead, saying what you tried and what "
-        f"stopped you."
+        f"stopped you.\n"
+        f"If you find the work is ALREADY done — the change is present and "
+        f"the suite is green without you editing anything — that is also a "
+        f"result, and it is not finished until it is on the ticket: call "
+        f"comment_on_ticket saying so. Telling only this console leaves the "
+        f"person who labelled the issue with nothing."
     )

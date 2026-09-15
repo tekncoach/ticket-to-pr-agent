@@ -295,3 +295,13 @@ def test_an_issue_with_no_pull_request_asks_github_nothing_about_ci():
               "/pulls": httpx.Response(200, json=[])}
     with _github_multi(routes):
         assert list_issues().data[0]["pr"] is None
+
+
+def test_the_prompt_says_what_to_do_when_the_work_is_already_done():
+    # Two agent_run passes of the same prompt: one reported on the ticket that
+    # the feature already existed, the other said so only to the console and
+    # ended. The prompt had a branch for a red suite and none for a finished
+    # one, so the reporting was left to chance.
+    prompt = task_prompt(14)
+    assert "ALREADY done" in prompt
+    assert prompt.count("comment_on_ticket") >= 2

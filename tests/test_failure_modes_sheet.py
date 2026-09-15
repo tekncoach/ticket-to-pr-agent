@@ -17,6 +17,12 @@ ROWS = list(csv.DictReader(SHEET.open(encoding="utf-8")))
 LAYERS = {"agent", "scorer", "schema", "case", "retrieval", "variance", "harness", "judge"}
 
 
+def _scored(report: dict) -> list[dict]:
+    """Per-case rows, under either key. The report gained metrics and renamed
+    "scores" to "cases"; old runs are still evidence and still readable."""
+    return report.get("cases") or report.get("scores") or []
+
+
 def _golden_rows():
     """Rows observed in a golden run. Findings from the judge calibration live
     in the same sheet but are not scored against a results file."""
@@ -57,7 +63,7 @@ def test_every_failure_in_the_runs_it_names_is_classified():
     triaged = {(r["pass_run"], r["case_id"]) for r in _golden_rows()}
     for stamp in {r["pass_run"] for r in _golden_rows()}:
         report = json.loads((RESULTS / f"{stamp}.json").read_text(encoding="utf-8"))
-        failed = {s["id"] for s in report["scores"] if not s["pass"]}
+        failed = {s["id"] for s in _scored(report) if not s["pass"]}
         missing = {c for c in failed if (stamp, c) not in triaged}
         assert not missing, f"{stamp}: failures with no row in the sheet: {missing}"
 
@@ -65,7 +71,7 @@ def test_every_failure_in_the_runs_it_names_is_classified():
 def test_it_does_not_classify_cases_that_passed():
     for row in _golden_rows():
         report = json.loads((RESULTS / f"{row['pass_run']}.json").read_text(encoding="utf-8"))
-        passed = {s["id"] for s in report["scores"] if s["pass"]}
+        passed = {s["id"] for s in _scored(report) if s["pass"]}
         assert row["case_id"] not in passed, (
             f"{row['case_id']} passed in {row['pass_run']} but carries a failure mode"
         )

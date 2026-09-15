@@ -1,6 +1,6 @@
 {
-  "run_at": "20260915T133010Z",
-  "golden_sha256": "3df68e922069920973c9512ee93a3f88e0c7bbc1357ac6db24204043bab68165",
+  "run_at": "20260915T132806Z",
+  "golden_sha256": "9c9ed09d69a651eb0c1b866616ab5f4a7ad54c3fef74094304c6d0a0c4f55b07",
   "model": "claude-haiku-4-5",
   "scope": {
     "tier": [
@@ -8,7 +8,7 @@
     ],
     "split": null,
     "id": [
-      "flow-005"
+      "flow-001"
     ],
     "gates_tier": "agent_run",
     "judged": false
@@ -41,7 +41,7 @@
         "name": "max_p95_latency_ms",
         "status": "fail",
         "threshold": 12000,
-        "observed": 51442.5,
+        "observed": 49340.4,
         "why": ""
       },
       {
@@ -74,35 +74,35 @@
       "max": 0.0
     },
     "p0_cases": 1,
-    "tool_precision": 0.5,
-    "tool_recall": 0.667,
+    "tool_precision": 0.8,
+    "tool_recall": 0.8,
     "grounded_rate": null,
     "mean_faithfulness": null,
-    "p95_latency_ms": 51442.5,
-    "mean_input_tokens": 155155.0,
-    "mean_output_tokens": 2779.0,
+    "p95_latency_ms": 49340.4,
+    "mean_input_tokens": 150889.0,
+    "mean_output_tokens": 3014.0,
     "cost_usd_per_case": null,
     "violations": {},
     "unstable_cases": [],
-    "elapsed_s": 51.4
+    "elapsed_s": 49.3
   },
   "skipped": [],
   "unrunnable": {},
   "cases": [
     {
-      "id": "flow-005",
+      "id": "flow-001",
       "severity": "P0",
-      "split": "hard",
+      "split": "core",
       "pass": false,
-      "tool_precision": 0.5,
-      "tool_recall": 0.6666666666666666,
+      "tool_precision": 0.8,
+      "tool_recall": 0.8,
       "citation_expected": false,
       "citation_ok": true,
       "faithfulness": null,
-      "latency_ms": 51442.5,
-      "input_tokens": 155155,
-      "output_tokens": 2779,
-      "tool_calls": 15,
+      "latency_ms": 49340.4,
+      "input_tokens": 150889,
+      "output_tokens": 3014,
+      "tool_calls": 16,
       "violated": []
     }
   ]
