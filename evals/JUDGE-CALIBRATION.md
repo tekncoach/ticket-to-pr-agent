@@ -6,7 +6,21 @@
 
 ## The protocol
 
-Three steps, ordered on purpose. `--dump` writes the sample as question, evidence and answer, **with no model output in it**; a person scores each 1–5; `--calibrate` then runs the judge on the same sample and reports the agreement. Scoring after seeing the judge's verdict measures how persuasive it is, not whether it is right.
+```
+make judge-dump        # writes judge-sample.jsonl: question, evidence, answer — no verdict
+                       # then score every line 1-5 in judge-labels.jsonl, by hand
+make judge-calibrate   # runs the judge on that same sample, reports the agreement
+```
+
+The order is the protocol. The dump carries **no model output**, because scoring after seeing the judge's verdict measures how persuasive it is, not whether it is right.
+
+One line per case in `judge-labels.jsonl`, and the only field to decide is `score`:
+
+```json
+{"id":"tool-006","score":3,"answer_sha":"158d6af6002c","note":"names two endpoints the retrieved lines do not contain"}
+```
+
+**Score faithfulness only** — is every claim in the answer supported by the EVIDENCE shown beside it? Not whether it is true in the world, not whether it is helpful. 5 = fully grounded; 1 = invented. A refusal is a 5 when the evidence really is empty or irrelevant. `answer_sha` is copied from the sample line it grades, and `note` is for the reader.
 
 Each label carries the sha256 of the answer it was written against. The agent answers differently between runs, so a re-dump invalidates the labels rather than silently re-using them against text nobody read.
 

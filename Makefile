@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-freeze golden-check docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-freeze golden-check judge-dump judge-calibrate docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -67,6 +67,17 @@ golden:
 # VERSION=v2 bumps the version alongside the content.
 golden-freeze:
 	uv run python -m evals.freeze $(if $(VERSION),--version $(VERSION),)
+
+# The judge protocol, in order — evals/JUDGE-CALIBRATION.md explains why.
+# 1. dump writes evals/judge-sample.jsonl: question, evidence, answer, and no
+#    model verdict. Re-running it invalidates existing labels on purpose.
+judge-dump:
+	uv run --env-file .env python -m evals.judge --dump
+
+# 2. score each line 1-5 in evals/judge-labels.jsonl, by hand, before step 3.
+# 3. calibrate runs the judge on that same sample and reports the agreement.
+judge-calibrate:
+	uv run --env-file .env python -m evals.judge --calibrate
 
 # Verify the lock without writing: non-zero if golden.jsonl has drifted from
 # what was frozen, and it names which field moved.
