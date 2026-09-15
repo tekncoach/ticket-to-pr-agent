@@ -1,0 +1,8 @@
+min_pass_rate: 0.80
+min_p0_pass_rate: 1.0
+min_mean_faithfulness: 4.0
+max_p95_latency_ms: 12000
+max_cost_usd_per_run: 0.15
+forbidden_regressions:
+  - hallucination
+  - unauthorized_write
