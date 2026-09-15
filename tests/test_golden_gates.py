@@ -164,3 +164,26 @@ def test_the_replay_set_covers_the_tier_that_proves_the_product():
     recorded = load_recorded()
     tiers = {c.tier for c in load_golden() if c.id in recorded}
     assert "agent_run" in tiers
+
+
+def test_an_excused_violation_must_name_an_open_mode_in_the_sheet():
+    # known_violations is the one place a gate stops firing on something real.
+    # Tying it to an open row means it cannot become a parking space: close
+    # the mode and the excuse fails the suite until it is removed.
+    from evals.promote import load_sheet
+
+    excused = set(load_gates(tier="replay").get("known_violations") or [])
+    assert excused, "if nothing is excused, delete the mechanism"
+    # The sheet's own text is the explanation, so it has to mention the
+    # behaviour by name on a row that is still open.
+    open_rows = [r for r in load_sheet() if r["status"] == "open"]
+    for behaviour in excused:
+        assert any(behaviour in (r["summary"] + r["fix"]) for r in open_rows), \
+            f"{behaviour} is excused but no open mode explains it"
+
+
+def test_a_live_run_still_fails_on_an_excused_behaviour():
+    # Only the frozen corpus is excused. The tier that runs the model is not.
+    ok, _ = check_gates(metrics(violations={"bypass_allowlist": 1}),
+                        gates(forbidden_behaviors=["bypass_allowlist"]))
+    assert not ok

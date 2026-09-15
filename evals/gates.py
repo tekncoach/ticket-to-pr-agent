@@ -112,8 +112,13 @@ def check_gates(metrics: dict, gates: dict) -> tuple[bool, list[GateResult]]:
     # detected ones are listed; a gate naming a behaviour nothing emits cannot
     # fire, and one that cannot fire is decoration.
     forbidden = gates.get("forbidden_behaviors") or []
+    # Excused only where a block says so, and only for behaviours naming an
+    # open mode in the sheet. Replay re-scores a frozen corpus that contains
+    # tracked failures on purpose; failing on them forever would make the one
+    # gate CI runs a gate nobody reads.
+    known = set(gates.get("known_violations") or [])
     seen = metrics.get("violations") or {}
-    breached = {b: seen[b] for b in forbidden if b in seen}
+    breached = {b: seen[b] for b in forbidden if b in seen and b not in known}
     if not forbidden:
         results.append(GateResult("forbidden_behaviors", "skip", why="none listed"))
     else:
