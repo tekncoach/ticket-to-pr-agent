@@ -1,6 +1,6 @@
 # Failure modes — first full pass of golden.jsonl v1
 
-`claude-haiku-4-5`, 2026-09-15, golden set `9c9ed09d`. Raw scores in [`results/`](results/).
+`claude-haiku-4-5`, 2026-09-15, golden set `9c9ed09d`. Raw scores in [`results/`](results/), the sheet itself as [`failure-modes.csv`](failure-modes.csv) — one row per case, openable in a spreadsheet, and checked against the runs it names so it cannot drift from them. This page is the reading of it.
 
 **31 of 44 scored cases passed.** 6 agent_run cases were not run (dollars and minutes, on demand), 2 were unrunnable because their fixture is not built.
 
