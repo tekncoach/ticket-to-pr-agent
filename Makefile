@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -95,6 +95,12 @@ judge-calibrate:
 golden-ci:
 	VECTOR_DB_PATH=data/kb-ci/kb.sqlite3 EVAL_RESULTS_DIR=$${EVAL_RESULTS_DIR:-$$(mktemp -d)} \
 	  uv run python -m evals.run --tier retrieval --gates ci_retrieval
+
+# The failure-mode sheet. No argument: what is open, closed and accepted.
+#   make modes CHECK=1    every closed mode names a test that exists
+#   make modes FROM_RUN=1 failures in the latest run no row covers, as CSV rows
+modes:
+	uv run python -m evals.promote $(if $(CHECK),--check,) $(if $(FROM_RUN),--from-run,)
 
 # Freeze each run into evals/traces/ so CI can re-score it. Run where the
 # corpus is; commit what it writes.

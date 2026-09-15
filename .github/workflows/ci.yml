@@ -50,6 +50,9 @@ jobs:
       # a regression in retrieval or in the scorers fails the build. Held to
       # its own measured bar (0.75) because BM25 over nine sources is not the
       # same measurement as hybrid over ten.
+      # The sheet cannot claim a mode is closed without naming a test that
+      # exists. Free, and it is what keeps "fixed" from being an opinion.
+      - run: make modes CHECK=1
       - run: make golden-ci
       # And the frozen runs, re-scored against the current scorers. This is
       # what catches a scorer or threshold change that would re-judge past

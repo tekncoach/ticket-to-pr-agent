@@ -75,3 +75,68 @@ def test_it_does_not_classify_cases_that_passed():
         assert row["case_id"] not in passed, (
             f"{row['case_id']} passed in {row['pass_run']} but carries a failure mode"
         )
+
+
+# --- the promotion path -----------------------------------------------------
+
+def test_the_sheet_says_nothing_it_cannot_prove():
+    # Every closed mode names a test that exists, every mode names a real case,
+    # and nothing is closed with nothing pinning it. Three modes had sat here
+    # marked FIXED with no proof, and two more had been triaged once and never
+    # fixed at all — F4 matched a string the wire never sends, so it had never
+    # fired, including on a real bypass.
+    from evals.promote import check, load_sheet
+
+    assert check(load_sheet()) == []
+
+
+def test_a_mode_closed_without_a_pin_is_refused():
+    from evals.promote import check
+
+    rows = [{"mode": "FX", "case_id": "ref-001", "layer": "scorer",
+             "severity": "P1", "status": "closed", "pinned_by": ""}]
+    assert any("nothing pinning it" in p for p in check(rows))
+
+
+def test_a_pin_naming_a_test_that_is_not_there_is_refused():
+    from evals.promote import check
+
+    rows = [{"mode": "FX", "case_id": "ref-001", "layer": "scorer",
+             "severity": "P1", "status": "closed",
+             "pinned_by": "tests/test_golden_scorers.py::test_nothing_like_this"}]
+    assert any("which is not there" in p for p in check(rows))
+
+
+def test_an_open_mode_may_not_claim_a_pin():
+    # A pin is what closing means. Claiming one while open is the ambiguity
+    # that let three modes read as fixed for a day.
+    from evals.promote import check
+
+    rows = [{"mode": "FX", "case_id": "ref-001", "layer": "scorer",
+             "severity": "P1", "status": "open",
+             "pinned_by": "tests/test_golden_scorers.py::test_a_clean_run_passes_and_says_what_the_judge_still_owes"}]
+    assert any("claims a pin" in p for p in check(rows))
+
+
+def test_triage_finds_a_failure_the_sheet_does_not_cover(tmp_path):
+    # The promotion step: a failure nobody wrote down is indistinguishable from
+    # one nobody noticed.
+    from evals.promote import triage
+
+    report = tmp_path / "r.json"
+    report.write_text(json.dumps({"run_at": "X", "cases": [
+        {"id": "qa-001", "pass": False, "severity": "P1", "violated": ["skip_citation"]},
+        {"id": "qa-002", "pass": True, "severity": "P1", "violated": []},
+    ]}), encoding="utf-8")
+    candidates = triage([{"case_id": "ref-001"}], report)
+    assert len(candidates) == 1 and "qa-001" in candidates[0]
+    assert "skip_citation" in candidates[0]
+
+
+def test_triage_stays_quiet_when_every_failure_is_already_tracked(tmp_path):
+    from evals.promote import triage
+
+    report = tmp_path / "r.json"
+    report.write_text(json.dumps({"run_at": "X", "cases": [
+        {"id": "qa-001", "pass": False, "severity": "P1", "violated": []}]}), encoding="utf-8")
+    assert triage([{"case_id": "qa-001"}], report) == []
