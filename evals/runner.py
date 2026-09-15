@@ -206,7 +206,8 @@ def run_case(case: GoldenCase, model: str | None = None) -> dict | None:
 
 
 def run_suite(cases: list[GoldenCase], passes: int = 1, model: str | None = None,
-              verbose: bool = True, judge: bool = False) -> dict:
+              verbose: bool = True, judge: bool = False,
+              record: bool = False) -> dict:
     """Run every case `passes` times and summarise. No thresholds here.
 
     Separate from the command that decides: this knows how to execute the set,
@@ -255,6 +256,12 @@ def run_suite(cases: list[GoldenCase], passes: int = 1, model: str | None = None
             # The raw score goes in and comes back clamped: score_case holds the
             # judge to the citation rule it states and does not keep.
             score = score_case(case, outcome, TOOLS, faithfulness=faithfulness)
+            if record and index == 0:
+                # The first pass only: a second recording of the same case
+                # would overwrite the first with no more information in it.
+                from evals.replay import record as freeze
+                from evals.schema import content_hash
+                freeze(case.id, outcome, content_hash())
             facts.append(case_facts(case, outcome, score, case_ms))
             if passes == 1 and verbose:
                 mark = "pass" if score.pass_ else "FAIL"

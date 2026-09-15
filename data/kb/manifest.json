@@ -1,0 +1,72 @@
+[
+  {
+    "path": "data/kb/sources/SPEC.md",
+    "title": "SPEC",
+    "layer": "project",
+    "license": "MIT (this repo)",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/SECRETS-REDACTION.md",
+    "title": "SECRETS-REDACTION",
+    "layer": "project",
+    "license": "MIT (this repo)",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/dora-2025-ai-assisted-development.md",
+    "title": "dora-2025-ai-assisted-development",
+    "layer": "software-factory-research",
+    "license": "private research notes (own synthesis of DORA/Google Cloud's public 2025 report) - not for verbatim redistribution",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/sota-software-factories-benchmarks-and-evidence.md",
+    "title": "sota-software-factories-benchmarks-and-evidence",
+    "layer": "software-factory-research",
+    "license": "private research notes (sourced, dated claims) - not for verbatim redistribution",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/multiplayer-agentic-engineering-singh.md",
+    "title": "multiplayer-agentic-engineering-singh",
+    "layer": "software-factory-research",
+    "license": "private synthesis of a public conference talk (Arjun Singh, Superconductor) - not for verbatim redistribution",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/agents-codebases-and-teams-khandelwal.md",
+    "title": "agents-codebases-and-teams-khandelwal",
+    "layer": "software-factory-research",
+    "license": "private synthesis of a public talk (Aditya Khandelwal, Amazon AGI Lab) - not for verbatim redistribution",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/checklist-agents-production.md",
+    "title": "checklist-agents-production",
+    "layer": "production-agent-engineering",
+    "license": "contains a verbatim excerpt of a public LinkedIn job posting (Rubicon, 2026-08-26) plus private commentary - not for verbatim redistribution",
+    "pii_reviewed": true
+  },
+  {
+    "path": "/Users/pierre/projects/sandbox/tnc-software-factory-learning/docs/resources/dora-2025-full-report.pdf",
+    "title": "dora-2025-full-report",
+    "layer": "software-factory-research",
+    "license": "public report (DORA/Google Cloud, 2025) - primary source, not redistributed here, just referenced by citation",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/Anthropic---The-AI-Native-SDLC-Playbook.md",
+    "title": "Anthropic — The AI-Native SDLC Playbook",
+    "layer": "production-agent-engineering",
+    "license": "synthesis of a public Anthropic blog post, produced by summarising it — not the author's verbatim text; source URL recorded in the file header",
+    "pii_reviewed": true
+  },
+  {
+    "path": "data/kb/sources/Anthropic---Claude-on-call--AI-first-responder-for-CI-CD-failures.md",
+    "title": "Anthropic — Claude on call: AI first responder for CI/CD failures",
+    "layer": "production-agent-engineering",
+    "license": "synthesis of a public Anthropic blog post, produced by summarising it — not the author's verbatim text; source URL recorded in the file header",
+    "pii_reviewed": true
+  }
+]

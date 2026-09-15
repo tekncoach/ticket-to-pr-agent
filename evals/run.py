@@ -39,6 +39,12 @@ def main() -> int:
                         help="run every case N times; thresholds read the lower bound")
     parser.add_argument("--no-gate", action="store_true",
                         help="measure and report, always exit 0")
+    parser.add_argument("--gates", default=None,
+                        help="name the thresholds block to apply (default: the "
+                             "tier's own, when exactly one tier was named)")
+    parser.add_argument("--record", action="store_true",
+                        help="freeze each run into evals/traces/ so CI can "
+                             "re-score it without a corpus or a key")
     parser.add_argument("--judge", action="store_true",
                         help="grade faithfulness too: one extra model call per "
                              "case, and the score is clamped by what the trace proved")
@@ -52,13 +58,14 @@ def main() -> int:
     if args.id:
         cases = [c for c in cases if c.id in args.id]
 
-    result = run_suite(cases, passes=args.passes, model=args.model, judge=args.judge)
+    result = run_suite(cases, passes=args.passes, model=args.model, judge=args.judge,
+                       record=args.record)
     metrics = result["metrics"]
 
     # Thresholds come from the tier when exactly one was named. A mixed scope
     # takes the global floor: applying the deterministic tier's higher bar to a
     # run containing model calls would fail it for being what it is.
-    tier = args.tier[0] if args.tier and len(args.tier) == 1 else None
+    tier = args.gates or (args.tier[0] if args.tier and len(args.tier) == 1 else None)
     gates = load_gates(tier=tier)
     ok, gate_results = check_gates(metrics, gates)
 

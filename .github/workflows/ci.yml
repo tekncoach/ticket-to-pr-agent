@@ -44,3 +44,15 @@ jobs:
       # on a changed set, so this is the wider check — it also catches a lock
       # whose version or counts drifted from the bytes they claim to describe.
       - run: make golden-check
+      # The behavioural gate. It retrieves against data/kb-ci/, a real corpus
+      # committed for exactly this, with no HF_TOKEN — retrieval degrades to
+      # BM25 rather than failing, so a stateless runner scores real cases and
+      # a regression in retrieval or in the scorers fails the build. Held to
+      # its own measured bar (0.75) because BM25 over nine sources is not the
+      # same measurement as hybrid over ten.
+      - run: make golden-ci
+      # And the frozen runs, re-scored against the current scorers. This is
+      # what catches a scorer or threshold change that would re-judge past
+      # behaviour — it cannot catch an agent regression, which needs the data
+      # CI does not have.
+      - run: make golden-replay

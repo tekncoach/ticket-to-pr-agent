@@ -132,11 +132,22 @@ def search_kb(query: str, k: int = 6, filters: dict | None = None, expand: bool 
     exact matched chunk. With expand=True, also add "section_text": the
     full section it came from (see expand_to_section), for when a single
     chunk cuts off mid-table or mid-list."""
-    query_vector = embed(query, model=EMBEDDING_MODEL)
+    # Embedding the query is the one step that needs a network and a token.
+    # Without it retrieval degrades to BM25 over the same corpus rather than
+    # failing: a stateless CI runner has no HF_TOKEN, and half a retriever
+    # scoring real cases beats a whole one that cannot start. It is a
+    # degradation, not a mode — the fusion below is a no-op on one list, and
+    # the multi-hop cases are the first to feel it.
+    try:
+        query_vector = embed(query, model=EMBEDDING_MODEL)
+    except Exception as exc:  # noqa: BLE001 — any embedding failure, not one class
+        _logger.warning("dense retrieval unavailable (%s); BM25 only", type(exc).__name__)
+        query_vector = None
 
     where_sql, params = _build_filters(filters)
     db = get_db()
-    dense_ids = _dense_search(db, query_vector, where_sql, params)
+    dense_ids = (_dense_search(db, query_vector, where_sql, params)
+                 if query_vector is not None else [])
     bm25_ids = _bm25_search(db, query, where_sql, params)
     fused = _reciprocal_rank_fusion(dense_ids, bm25_ids)
     top_ids = sorted(fused, key=fused.get, reverse=True)[:k]

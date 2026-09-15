@@ -70,6 +70,24 @@ tiers:
     min_pass_rate: 0.90
     max_p95_latency_ms: 8000
 
+  # The same retrieval cases against the committed CI corpus (data/kb-ci/),
+  # with no HF_TOKEN, so retrieval degrades to BM25 over nine sources instead
+  # of hybrid over ten. A different measurement, so a different bar: 0.812
+  # observed on 2026-09-15, floor two cases below at 0.75. This is the block
+  # CI uses, and it is the only behavioural gate that runs on every push.
+  # Frozen runs re-scored. They span tiers, so the model tier's known-failing
+  # P0 cases are in the mix and the global 1.0 cannot apply; measured 0.864
+  # overall and 0.889 on P0 (2026-09-15). This gate exists to catch a scorer
+  # or threshold change that re-judges past behaviour, so its bars sit just
+  # under what those recordings score today.
+  replay:
+    min_pass_rate: 0.80
+    min_p0_pass_rate: 0.85
+
+  ci_retrieval:
+    min_pass_rate: 0.75
+    max_p95_latency_ms: 8000
+
   # A ratchet. It was pinned at 0.44 while three scorer defects named in the
   # Day-7 triage were still open — F5 (setup.label unset read as unlabelled),
   # F1 (the refusal marker list), F3 (a retry detector that could not tell a

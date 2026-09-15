@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-freeze golden-check judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -65,6 +65,7 @@ golden:
 	  $(if $(PASSES),--passes $(PASSES),) \
 	  $(if $(NO_GATE),--no-gate,) \
 	  $(if $(JUDGE),--judge,) \
+	  $(if $(GATES),--gates $(GATES),) \
 	  $(if $(MODEL),--model $(MODEL),)
 
 # Rewrite evals/golden.lock.json from the set itself. Re-running it on an
@@ -87,6 +88,26 @@ judge-dump:
 #    draw is a number without error bars.
 judge-calibrate:
 	uv run --env-file .env python -m evals.judge --calibrate $(if $(PASSES),--passes $(PASSES),)
+
+# The gate CI runs: the retrieval cases against the committed CI corpus, with
+# no key and no network. BM25 only — see rag/retrieve.py — so it is held to its
+# own measured bar rather than the full corpus's.
+golden-ci:
+	VECTOR_DB_PATH=data/kb-ci/kb.sqlite3 EVAL_RESULTS_DIR=$${EVAL_RESULTS_DIR:-$$(mktemp -d)} \
+	  uv run python -m evals.run --tier retrieval --gates ci_retrieval
+
+# Freeze each run into evals/traces/ so CI can re-score it. Run where the
+# corpus is; commit what it writes.
+#   make golden-record TIER=retrieval
+golden-record:
+	uv run --env-file .env python -m evals.run --record --no-gate \
+	  $(foreach t,$(TIER),--tier $(t)) $(foreach i,$(ID),--id $(i))
+
+# Re-score those frozen runs against the current scorers and thresholds. No
+# model, no corpus, no secrets — this is the one behavioural gate CI can run.
+# It catches a scorer or threshold regression, NOT an agent regression.
+golden-replay:
+	uv run python -m evals.replay
 
 # Install scripts/pre-push as the local gate. CI runs the hermetic half; the
 # eval half needs the corpus and the target checkout, which a stateless runner

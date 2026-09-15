@@ -25,6 +25,16 @@ data/*
 !data/kb/
 data/kb/*
 !data/kb/manifest.example.json
+# The sources themselves are in the tree now: they are what makes the corpus
+# reproducible, and without them "make ingest" is a command nobody else can
+# run. The 15.5 MB DORA PDF stays out — it is the only heavy one, and a binary
+# that size is a tax on every clone.
+!data/kb/sources/
+!data/kb/manifest.json
+data/kb/sources/*.pdf
+# The CI corpus: small, built from the sources above, committed on purpose so
+# a stateless runner can retrieve against something real.
+!data/kb-ci/
 
 # Editors / OS
 .DS_Store
