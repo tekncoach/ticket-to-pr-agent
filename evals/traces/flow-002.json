@@ -1,0 +1,1 @@
+{"case_id": "flow-002", "recorded_at": "20260915T143220Z", "golden_sha256": "e5701a1b7a1e614f3fecfec85c6315e55644e8744d7291e540353603937d994a", "answer": "not_found: HTTP 404", "error": null, "trace": []}

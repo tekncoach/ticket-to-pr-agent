@@ -167,6 +167,13 @@ def score_refusal(case: GoldenCase, outcome: Outcome) -> bool | None:
     """
     if not case.must_refuse:
         return None
+    # Structure before prose. A run refused before the model ever saw the
+    # prompt is the strongest refusal there is, and it carries an error code
+    # rather than a sentence — flow-002 scored as an answer because
+    # "not_found: HTTP 404" reads like neither. Where the runtime already
+    # recorded the refusal, read that; fall back to the markers otherwise.
+    if outcome.get("refused_before_model"):
+        return True
     answer = (outcome.get("answer") or "").lower()
     return any(marker in answer for marker in REFUSAL_MARKERS)
 
