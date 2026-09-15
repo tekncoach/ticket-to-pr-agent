@@ -10,11 +10,13 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agent.factory import SYSTEM_PROMPT
 from evals.gates import check_gates, load_gates
 from evals.runner import run_suite
 from evals.schema import content_hash, load_golden
@@ -23,6 +25,33 @@ from evals.schema import content_hash, load_golden
 # runs on every push, and writing a report into the repository each time left
 # the tree modified immediately after every push — a loop that trains people to
 # ignore git status.
+def _agent_sha() -> str | None:
+    """The commit the agent ran at. Without it a drop cannot be attributed to
+    anything, and the first question after "it dropped" is "since what?"."""
+    import subprocess
+
+    try:
+        return subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True,
+                              text=True, timeout=10, check=True).stdout.strip()[:12]
+    except Exception:  # noqa: BLE001 — a tarball has no git, and that is fine
+        return None
+
+
+def _corpus_sha() -> str | None:
+    """The corpus the retriever read. A drop that coincides with a corpus
+    change is a different finding from one that does not."""
+    import hashlib
+
+    path = Path(os.environ.get("VECTOR_DB_PATH", "data/kb/kb.sqlite3"))
+    if not path.exists():
+        return None
+    digest = hashlib.sha256()
+    with path.open("rb") as fh:
+        for block in iter(lambda: fh.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()[:12]
+
+
 RESULTS_DIR = Path(os.environ.get("EVAL_RESULTS_DIR")
                    or Path(__file__).parent / "results")
 
@@ -73,6 +102,13 @@ def main() -> int:
         "run_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
         "golden_sha256": content_hash(),
         "model": args.model or os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
+        # What the run stood on. A delta without these invites the wrong fix:
+        # "the pass rate dropped" and "the pass rate dropped after the corpus
+        # was rebuilt" are different findings with different repairs.
+        "agent_sha": _agent_sha(),
+        "corpus_sha256": _corpus_sha(),
+        "prompt_sha256": hashlib.sha256(
+            SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:12],
         "scope": {"tier": args.tier, "split": args.split, "id": args.id,
                   "gates_tier": tier, "judged": args.judge},
         "gate": {"pass": ok,

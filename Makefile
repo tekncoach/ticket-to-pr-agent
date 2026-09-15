@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -95,6 +95,13 @@ judge-calibrate:
 golden-ci:
 	VECTOR_DB_PATH=data/kb-ci/kb.sqlite3 EVAL_RESULTS_DIR=$${EVAL_RESULTS_DIR:-$$(mktemp -d)} \
 	  uv run python -m evals.run --tier retrieval --gates ci_retrieval
+
+# Compare the latest run to evals/results/baseline.json. Ranges, not points:
+# a drop counts only when the two do not overlap, because a single case here
+# has scored 0.00 and 1.00 on consecutive passes.
+#   make drift FAIL=1   exit non-zero on drift
+drift:
+	uv run python -m evals.drift $(if $(FAIL),--fail-on-drift,)
 
 # The failure-mode sheet. No argument: what is open, closed and accepted.
 #   make modes CHECK=1    every closed mode names a test that exists
