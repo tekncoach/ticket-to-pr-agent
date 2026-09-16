@@ -99,7 +99,11 @@ def _existing_pr(client: ResilientClient, branch: str) -> dict | None:
     result = client.request(
         "GET", f"/repos/{REPO}/pulls",
         headers=GITHUB_HEADERS,
-        params={"head": f"{owner}:{branch}", "state": "all", "per_page": 10},
+        # state=open, not all. With "all", a pull request that was closed or
+        # merged still answered "already open for this issue", so the branch
+        # could never be proposed again — the one case where reopening the work
+        # is exactly what should happen.
+        params={"head": f"{owner}:{branch}", "state": "open", "per_page": 10},
     )
     if not result.ok or not isinstance(result.data, list) or not result.data:
         return None

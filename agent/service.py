@@ -33,6 +33,11 @@ from agent.runtime import AgentRuntime
 _TERMINAL_EVENTS = {
     "final", "auth_failure", "repeated_tool_failure",
     "duplicate_call_stop", "llm_call_error",
+    # Added when the guards that emit them were: a run the runtime stopped on
+    # purpose was rendering as incomplete, and its stop sentence — the one
+    # thing that says why — never reached the page. Every terminal event
+    # belongs here, and a guard that emits a new one has to add it.
+    "allowlist_workaround_stop", "refused_path_retry_stop",
 }
 
 app = FastAPI(title="ticket-to-pr-agent", version="0.1.0")

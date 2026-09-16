@@ -83,12 +83,23 @@ def _handler(arguments: dict) -> ToolResult:
     # Re-read, not trusted from the door: a run takes minutes, and a human can
     # unlabel or close an issue inside that window. Same reasoning as
     # tools/open_pr.py.
+    # Fail closed. The first version checked the label only when an issue had
+    # been authorised, which left the default case — no authorisation at all —
+    # with no check whatsoever: /v1/chat and agent/cli.py never authorise, so
+    # with SHADOW_MODE=false any conversation could write files with the
+    # contract never consulted. The guard was weakest exactly where consent was
+    # absent rather than merely stale. Found by a review that had none of the
+    # reasoning that produced it, only the code.
     if command in _WRITING_COMMANDS:
         issue_id = authorised_issue()
-        if issue_id is not None:
-            consent = check_ready(issue_id)
-            if not consent.ok:
-                return ToolResult(ok=False, error_code=consent.error_code)
+        if issue_id is None:
+            return _denied(
+                "no issue is authorised for this run — writes belong to a "
+                "ticket a human labelled agent:ready, and this run was not "
+                "started from one")
+        consent = check_ready(issue_id)
+        if not consent.ok:
+            return ToolResult(ok=False, error_code=consent.error_code)
     raw_path = arguments.get("path")
     if not raw_path:
         return _invalid("missing path")

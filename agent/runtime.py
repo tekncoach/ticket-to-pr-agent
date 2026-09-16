@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Callable
 import json, os, time, uuid
+from pathlib import Path
 
 import anthropic
 import jsonschema
@@ -75,6 +76,40 @@ class ToolResult:
     # is a layer above the one that saw the header — and "wait 60s" is exactly
     # the instruction that must not be lost on the way up.
     retry_after: float | None = None
+
+def _resolved_or_none(candidate: str) -> str | None:
+    """An absolute, resolved path, or None for anything that is not one.
+
+    A bare relative token like ".." is not a path worth remembering: it names
+    no particular file and matches almost any later argument. Only something
+    that resolves to a real absolute location is recorded.
+    """
+    if not candidate or candidate in (".", ".."):
+        return None
+    try:
+        resolved = Path(candidate).expanduser().resolve()
+    except (OSError, RuntimeError, ValueError):
+        return None
+    return str(resolved) if resolved.is_absolute() and str(resolved) != "/" else None
+
+
+def _referenced_paths(arguments: Any) -> set[str]:
+    """Every string in a tool's arguments that resolves to an absolute path.
+
+    Compared against refused paths as paths, so a coincidental substring in a
+    grep pattern or a file body cannot look like a boundary crossing.
+    """
+    found: set[str] = set()
+    values = arguments.values() if isinstance(arguments, dict) else []
+    for value in values:
+        if not isinstance(value, str):
+            continue
+        for token in value.replace("|", " ").replace("&", " ").split():
+            resolved = _resolved_or_none(token.strip("'\"")) if "/" in token else None
+            if resolved:
+                found.add(resolved)
+    return found
+
 
 def _leading_executable(command: str) -> str | None:
     """The first word of a shell command, or None.
@@ -280,13 +315,15 @@ class AgentRuntime:
                 "gen_ai.usage.input_tokens": usage.input_tokens,
                 "gen_ai.usage.output_tokens": usage.output_tokens,
                 # Within output_tokens, not additive — a breakdown, not a cost
-                # line. Always None today: we never request thinking.
+                # line. None unless THINKING_ENABLED, which agent/factory.py
+                # reads from the environment and _thinking_param sends.
                 "gen_ai.usage.reasoning.output_tokens": (
                     usage.output_tokens_details.thinking_tokens
                     if usage.output_tokens_details else None),
-                # Always 0 today — no cache_control breakpoints yet, despite
-                # the prompt + tool schemas repeating every turn: a real,
-                # unexploited caching win.
+                # Non-zero since caching was wired: _llm marks the system block
+                # and the end of the conversation, so the history is written
+                # once and re-read every turn after. Measured at 559,436 read
+                # against 3,691 fresh on one full ticket run.
                 "gen_ai.usage.cache_write.input_tokens": usage.cache_creation_input_tokens,
                 "gen_ai.usage.cache_read.input_tokens": usage.cache_read_input_tokens,
                 # Occupancy, not spend: how full the window was on this turn.
@@ -374,8 +411,6 @@ class AgentRuntime:
                         ),
                         "trace": trace,
                     }
-                seen_calls.add(signature)
-
                 # A second binary after the allowlist refused the first is one
                 # attempt, not two. Scoped deliberately narrow: only bash, only
                 # after an executable refusal, and only when the executable
@@ -383,8 +418,16 @@ class AgentRuntime:
                 # correction and still runs. A blunter guard would block
                 # legitimate exploration, which this repo has paid for once.
                 if refused_paths:
-                    rendered = json.dumps(block.input, sort_keys=True)
-                    reached = next((p for p in refused_paths if p in rendered), None)
+                    # Resolved paths compared as paths — never a substring of
+                    # the serialised arguments. The first version stored
+                    # whatever followed the colon in the error, so `ls ..` put
+                    # ".." in the set and every later argument containing two
+                    # dots — a grep pattern, an ellipsis in new_str, a file
+                    # named a..b — killed the run with a message about
+                    # boundaries.
+                    reached = next(
+                        (p for p in refused_paths
+                         if p in _referenced_paths(block.input)), None)
                     if reached:
                         emit({
                             "event": "refused_path_retry_stop", "run_id": run_id,
@@ -426,7 +469,8 @@ class AgentRuntime:
                             "trace": trace,
                         }
 
-                if i >= self.max_parallel_tool_calls:
+                capped = i >= self.max_parallel_tool_calls
+                if capped:
                     # Executed sequentially today (docs/SDLC-schema.md says
                     # why): the cap bounds side effects per turn, it does not
                     # manage concurrency that doesn't exist yet.
@@ -450,6 +494,17 @@ class AgentRuntime:
                         except Exception as exc:  # a broken handler must not crash the run
                             result = ToolResult(ok=False, error_code=str(
                                 ToolError(ErrorClass.INTERNAL, f"{type(exc).__name__}: {exc}")))
+
+                # Recorded only if it actually ran. Adding it before the
+                # parallel-call cap meant a call refused without executing was
+                # still remembered as done, so re-issuing it hit the anti-spin
+                # guard and ended the run with "trying again would not produce
+                # new information" — about a call that had produced none. The
+                # comment on the cap says a refused call gets a tool_result so
+                # the model is not taught to stop calling in parallel, which
+                # only makes sense if re-issuing it is allowed.
+                if not capped:
+                    seen_calls.add(signature)
 
                 emit({
                     "event": "tool_result", "run_id": run_id, "ts": _now_iso(), "turn": turn,
@@ -479,7 +534,8 @@ class AgentRuntime:
                 # Any tool, any guard: a path refused once is refused for the
                 # rest of the run, whichever tool asks next.
                 if not result.ok and "escapes workspace" in (result.error_code or ""):
-                    refused = (result.error_code or "").rsplit(":", 1)[-1].strip()
+                    refused = _resolved_or_none(
+                        (result.error_code or "").rsplit(":", 1)[-1].strip())
                     if refused:
                         refused_paths.add(refused)
 

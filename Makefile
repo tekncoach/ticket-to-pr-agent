@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -118,6 +118,13 @@ drift-check:
 #   make trend TIER=single_turn
 trend:
 	uv run python -m evals.trend $(if $(TIER),--tier $(TIER),)
+
+# The brief for a reviewer with none of this repository's context. Paste it to
+# a fresh agent before a submission or a release — docs/COLD-AUDIT.md says why,
+# and what the seven lenses are. Ten defects in one pass, seven of them in code
+# written that week, all of them read three times by whoever wrote them.
+audit:
+	@sed -n '/## The seven lenses/,$$p' docs/COLD-AUDIT.md
 
 # The failure-mode sheet. No argument: what is open, closed and accepted.
 #   make modes CHECK=1    every closed mode names a test that exists

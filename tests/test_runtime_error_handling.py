@@ -235,3 +235,68 @@ def test_a_different_path_after_a_refusal_still_runs(monkeypatch):
         [("bash", {"command": "ls ."})],
     ])
     assert result.get("error") != "refused_path_retry"
+
+
+def test_no_comment_claims_a_feature_is_absent_that_is_wired_up():
+    # Two comments said thinking was never requested and no cache breakpoints
+    # existed, months after both were built. A comment that contradicts the
+    # code beneath it is worse than none: it is read as current.
+    import inspect
+
+    from agent import runtime
+
+    source = inspect.getsource(runtime)
+    assert "we never request thinking" not in source
+    assert "no cache_control breakpoints yet" not in source
+
+
+def test_a_relative_token_is_never_remembered_as_a_refused_path():
+    # F30: bash checks every argument, so `ls ..` produced "argument escapes
+    # workspace: .." and the guard stored the two-character string. It then
+    # substring-matched the serialised arguments of every later call, so a grep
+    # pattern with an ellipsis, or a filename like a..b, killed the run with a
+    # message about boundaries.
+    from agent.runtime import _referenced_paths, _resolved_or_none
+
+    assert _resolved_or_none("..") is None
+    assert _resolved_or_none(".") is None
+    assert _resolved_or_none("/etc/passwd") is not None
+    assert _referenced_paths({"command": "grep -rn 'x...y' app.py"}) == set()
+    assert _referenced_paths({"command": "cat /etc/passwd"})
+
+
+def test_a_capped_call_may_be_reissued(monkeypatch):
+    # F31: the signature was recorded before the parallel-call cap ran, so a
+    # 7th call in one turn was refused without executing and still remembered
+    # as done. Re-issuing it hit the anti-spin guard and ended the run saying
+    # "trying again would not produce new information" — about a call that had
+    # produced none.
+    from agent.runtime import AgentRuntime, Tool, ToolResult
+
+    monkeypatch.setenv("LLM_API_KEY", "not-a-real-key")
+    schema = {"type": "object", "properties": {"command": {"type": "string"}}}
+    bash = Tool(name="bash", handler=lambda _a: ToolResult(ok=True, data="ok"),
+                input_schema=schema)
+    runtime = AgentRuntime(model="m", tools={"bash": bash}, system="s",
+                           logger=NullSink(), max_parallel_tool_calls=2)
+    result = _drive(runtime, [
+        [("bash", {"command": f"ls {i}"}) for i in range(3)],
+        [("bash", {"command": "ls 2"})],
+    ])
+    assert result.get("error") != "duplicate_tool_call"
+
+
+def test_every_stop_the_runtime_emits_is_declared_terminal():
+    # F35: two stop events were added with new guards and never added to the
+    # service's terminal set, so a run the runtime killed on purpose rendered
+    # as still going and its stop sentence — the only thing that says why —
+    # never reached the page.
+    import inspect
+    import re
+
+    from agent import runtime, service
+
+    emitted = set(re.findall(r'"event": "(\w*?_stop|final|\w*?_error|\w*?_failure)"',
+                             inspect.getsource(runtime)))
+    missing = {e for e in emitted if e.endswith("_stop")} - service._TERMINAL_EVENTS
+    assert not missing, f"the runtime stops on {missing} and the service does not know"

@@ -9,8 +9,26 @@ path-escape / denylist / ambiguous-match logic regresses? This one.
 """
 from unittest.mock import patch
 
+import pytest
+
 from agent.errors import ErrorClass, classify, is_retryable
 from tools.edit_file import edit_file
+
+
+@pytest.fixture(autouse=True)
+def _a_ticket_is_authorised():
+    """Every write test here is about the editor's own behaviour, not about
+    consent — so they run inside an authorised, labelled ticket, which is the
+    only state in which a write is reached at all now that edit_file fails
+    closed. The consent tests at the bottom set their own state."""
+    from agent.consent import authorise, clear
+    from agent.runtime import ToolResult
+
+    authorise(1)
+    with patch("tools.edit_file.check_ready",
+               return_value=ToolResult(ok=True, data={"number": 1})):
+        yield
+    clear()
 
 
 def _call(tmp_path, **arguments):
@@ -276,3 +294,19 @@ def test_the_authorisation_does_not_leak_between_runs():
     clear()
     assert set(asyncio.run(both())) == {13, 14}
     assert authorised_issue() is None, "neither run leaked into the caller"
+
+
+def test_a_write_with_no_authorised_ticket_is_refused(monkeypatch):
+    # F29: the first version checked the label only when an issue had been
+    # authorised, so the default case — no authorisation at all — had no check.
+    # /v1/chat and agent/cli.py never authorise, so with SHADOW_MODE=false any
+    # conversation could write with the contract never consulted. The guard was
+    # weakest exactly where consent was absent rather than stale.
+    from agent.consent import clear
+
+    clear()
+    with patch("tools.edit_file.check_ready") as checked:
+        result = edit_file.handler({"command": "create", "path": "pwned.py",
+                                    "file_text": "x"})
+    assert not result.ok and "no issue is authorised" in result.error_code
+    assert not checked.called, "there was nothing to check against"

@@ -41,6 +41,25 @@ Retrieval tier: **0.938** on the full corpus, **0.812** in CI on the 9-source su
 
 `agent_run`: 1 pass in 4 attempts. A single green there is one draw, not a rate, and [`gates.yaml`](../evals/gates.yaml) carries that history next to the threshold.
 
+## Where the findings come from
+
+Two sources, and they find different things.
+
+**Running the suite** finds what the agent does wrong, and what the scorers get
+wrong about it. That is F1–F28: every one surfaced from a measurement, none
+from reading.
+
+**A cold audit** finds what neither notices, because both were written by
+someone holding the intent. F29–F38 came from one pass by a reviewer with no
+context ([`docs/COLD-AUDIT.md`](COLD-AUDIT.md)) — ten defects, seven in code
+written that week, two exploitable. The worst was a write gate that checked the
+label only when a ticket had been authorised and skipped the check entirely
+when none had; `/v1/chat` never authorises, so any conversation could write.
+
+The pattern is worth stating because it is the argument for doing both: a
+measurement cannot see a guard that never fires, and a reader cannot see a
+behaviour that only appears under load.
+
 ## Keeping the split honest
 
 Every finding lands in `hard` or `adversarial`, so the set drifts away from

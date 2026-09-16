@@ -159,6 +159,17 @@ def _handler(arguments: dict) -> ToolResult:
                     f"would comment on {target} ({reason}, nothing posted): {body}"
                 ))
 
+            # Cycle 0 deliberately posts on a failed read, and a review has
+            # read that as a bug. It is the considered half of a trade: with
+            # GitHub unreachable, refusing here means a failed run tells the
+            # human nothing at all, and reporting is the one path this tool
+            # exists for — it carries no check_ready for the same reason. The
+            # bound is one post per run, never two, which
+            # test_an_unreadable_issue_never_leads_to_a_second_post pins with
+            # every read failing and every write losing its response. The
+            # residual risk is a duplicate across runs, which is cosmetic and
+            # recoverable; silence about a failed run is neither.
+            #
             # Only write on positive knowledge that no marker is there. Once a
             # POST has been sent, a read we could not complete means "unknown",
             # and unknown must not become "post it again" — the previous one may

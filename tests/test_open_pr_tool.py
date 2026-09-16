@@ -286,4 +286,27 @@ def test_reporting_is_not_gated_the_way_writing_is():
     # is worse than the write it prevents.
     import inspect
     from tools import comment_on_ticket as reporter
-    assert "check_ready" not in inspect.getsource(reporter)
+    # A call, not a mention: grepping the whole source made a comment
+    # explaining why the gate is absent fail the test asserting it is absent.
+    # Parsed instead, so prose about the decision is allowed and the decision
+    # itself is still enforced.
+    import ast
+
+    tree = ast.parse(inspect.getsource(reporter))
+    called = {node.func.id for node in ast.walk(tree)
+              if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+    assert "check_ready" not in called
+
+
+def test_a_closed_pull_request_does_not_block_a_new_one():
+    # F36: the lookup asked for state=all, so a closed or merged pull request
+    # answered "already open for this issue" and the branch could never be
+    # proposed again — the one case where redoing the work is what should
+    # happen.
+    import inspect
+
+    from tools import open_pr as module
+
+    source = inspect.getsource(module)
+    assert '"state": "open"' in source
+    assert '"state": "all"' not in source, "a dead pull request must not block a live one"
