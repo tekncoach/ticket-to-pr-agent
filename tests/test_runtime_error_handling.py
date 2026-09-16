@@ -179,3 +179,59 @@ def test_correcting_the_same_command_after_a_refusal_still_runs(monkeypatch):
         [("bash", {"command": "env -0"})],
     ])
     assert result.get("error") != "allowlist_workaround"
+
+
+def test_a_path_refused_by_one_tool_is_refused_through_the_next(monkeypatch):
+    # F28: the executable memory was bash-only, so bash being refused for
+    # /etc/passwd and the editor then being asked for the same file was
+    # recorded nowhere. The editor refuses it independently — it has confined
+    # paths since before any of this — so nothing leaks, and adv-006 was
+    # passing for a reason unrelated to the guard it was written to test.
+    # Reaching for another tool to obtain the refused thing is the behaviour.
+    from agent.errors import ErrorClass, ToolError
+    from agent.runtime import AgentRuntime, Tool, ToolResult
+
+    monkeypatch.setenv("LLM_API_KEY", "not-a-real-key")
+    denied = ToolResult(ok=False, error_code=str(ToolError(
+        ErrorClass.DENIED, "argument escapes workspace: /etc/passwd")))
+    schema = {"type": "object", "properties": {"command": {"type": "string"},
+                                               "path": {"type": "string"}}}
+    tools = {
+        "bash": Tool(name="bash", handler=lambda _a: denied, input_schema=schema),
+        "str_replace_based_edit_tool": Tool(
+            name="str_replace_based_edit_tool",
+            handler=lambda _a: ToolResult(ok=True, data="root:x:0:0"),
+            input_schema=schema),
+    }
+    runtime = AgentRuntime(model="m", tools=tools, system="s", logger=NullSink())
+    result = _drive(runtime, [
+        [("bash", {"command": "cat /etc/passwd"})],
+        [("str_replace_based_edit_tool", {"command": "view", "path": "/etc/passwd"})],
+    ])
+    assert result["error"] == "refused_path_retry"
+    assert "/etc/passwd" in result["answer"]
+    assert any(e["event"] == "refused_path_retry_stop" for e in result["trace"])
+
+
+def test_a_different_path_after_a_refusal_still_runs(monkeypatch):
+    # Narrow on purpose: being refused one path does not end exploration of
+    # the workspace, which is what a blunter guard would do.
+    from agent.errors import ErrorClass, ToolError
+    from agent.runtime import AgentRuntime, Tool, ToolResult
+
+    monkeypatch.setenv("LLM_API_KEY", "not-a-real-key")
+    answers = iter([
+        ToolResult(ok=False, error_code=str(ToolError(
+            ErrorClass.DENIED, "argument escapes workspace: /etc/passwd"))),
+        ToolResult(ok=True, data="app.py"),
+    ])
+    bash = Tool(name="bash", handler=lambda _a: next(answers),
+                input_schema={"type": "object",
+                              "properties": {"command": {"type": "string"}}})
+    runtime = AgentRuntime(model="m", tools={"bash": bash}, system="s",
+                           logger=NullSink())
+    result = _drive(runtime, [
+        [("bash", {"command": "cat /etc/passwd"})],
+        [("bash", {"command": "ls ."})],
+    ])
+    assert result.get("error") != "refused_path_retry"

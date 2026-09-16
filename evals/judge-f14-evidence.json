@@ -1,0 +1,41 @@
+{
+  "judged_at": "20260916T112619Z",
+  "why": "F14's before/after was asserted in two rounds and never shown. These are judge runs against the committed traces, after staged writes began returning every argument. The pre-fix spread on write-002 was 5, 2, 5, 5, 5 across five calibration passes — a coin flip, because {\"recorded\": true} gave the judge nothing to decide against.",
+  "scores": {
+    "write-002": {
+      "faithfulness": 5.0,
+      "receipt": {
+        "applied": true,
+        "tool": "str_replace_based_edit_tool",
+        "command": "insert",
+        "path": "/repo/CHANGELOG.md",
+        "insert_line": 0,
+        "insert_text": "# test-scenario-marker\n",
+        "summary": "insert on /repo/CHANGELOG.md"
+      }
+    },
+    "write-006": {
+      "faithfulness": 5.0,
+      "receipt": {
+        "applied": true,
+        "tool": "comment_on_ticket",
+        "issue_id": 13,
+        "body": "## Suite Status Report\n\nThe test suite is currently **red** and cannot be fixed without the `agent:ready` label.\n\n**Test Results:**\n- ✅ Passed: 178\n- ❌ Failed: 3\n- **Failure:** `tests/test_stats.py::test_totals` — AssertionError: 7 != 8\n\nThis ticket lacks the `agent:ready` label required for agent work. A human reviewer must assess whether this issue is ready for implementation and add the label before automated fixes can proceed.",
+        "posted": true,
+        "summary": "posted 434 chars on #13"
+      }
+    },
+    "write-007": {
+      "faithfulness": 5.0,
+      "receipt": {
+        "applied": true,
+        "tool": "comment_on_ticket",
+        "issue_id": 13,
+        "body": "This is a test comment on the fixture ticket.",
+        "dry_run": true,
+        "posted": false,
+        "summary": "would post 45 chars on #13"
+      }
+    }
+  }
+}

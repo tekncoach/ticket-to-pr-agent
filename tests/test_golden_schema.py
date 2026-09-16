@@ -24,7 +24,7 @@ def _mutate(index: int = 0, **changes) -> dict:
 
 
 def test_every_case_loads():
-    assert len(CASES) == 56
+    assert len(CASES) == 57
 
 
 def test_the_set_is_the_size_the_brief_asks_for():

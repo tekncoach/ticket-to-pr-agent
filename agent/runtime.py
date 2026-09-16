@@ -214,6 +214,14 @@ class AgentRuntime:
         # rather than of making a mistake. Saying so in the prompt did not stop
         # it; prose is not the mechanism. F23.
         refused_executables: set[str] = set()
+        # Paths a guard has already refused, from ANY tool. The executable
+        # memory above is bash-only, which left the sibling path open: bash
+        # refused for /etc/passwd, and the editor was asked for the same file.
+        # The editor refuses it too — it has confined paths since before any of
+        # this — so nothing leaks. But reaching for another tool to obtain the
+        # refused thing is the behaviour, not the outcome, and it was recorded
+        # nowhere. F28.
+        refused_paths: set[str] = set()
         # Consecutive failures per tool, reset by that tool succeeding.
         failure_streak: dict[str, int] = {}
 
@@ -374,6 +382,28 @@ class AgentRuntime:
                 # changes — fixing a path or a flag after a refusal is a
                 # correction and still runs. A blunter guard would block
                 # legitimate exploration, which this repo has paid for once.
+                if refused_paths:
+                    rendered = json.dumps(block.input, sort_keys=True)
+                    reached = next((p for p in refused_paths if p in rendered), None)
+                    if reached:
+                        emit({
+                            "event": "refused_path_retry_stop", "run_id": run_id,
+                            "ts": _now_iso(), "turn": turn, "tool": block.name,
+                            "path": reached,
+                        })
+                        return {
+                            "run_id": run_id,
+                            "error": "refused_path_retry",
+                            "answer": (
+                                f"Stopping: {reached} was already refused as outside "
+                                f"the workspace, and this run reached for it again "
+                                f"through {block.name}. A different tool is not a way "
+                                f"around a boundary — a human has to decide whether "
+                                f"the boundary should move."
+                            ),
+                            "trace": trace,
+                        }
+
                 if block.name == "bash" and refused_executables:
                     head = _leading_executable(block.input.get("command", ""))
                     if head and head not in refused_executables:
@@ -445,6 +475,13 @@ class AgentRuntime:
                     "latency_ms": (time.time() - tool_t0) * 1000,
                     "error_class": classify(result.error_code).value if not result.ok else None,
                 })
+
+                # Any tool, any guard: a path refused once is refused for the
+                # rest of the run, whichever tool asks next.
+                if not result.ok and "escapes workspace" in (result.error_code or ""):
+                    refused = (result.error_code or "").rsplit(":", 1)[-1].strip()
+                    if refused:
+                        refused_paths.add(refused)
 
                 if (not result.ok and block.name == "bash"
                         and "not allowed" in (result.error_code or "")):

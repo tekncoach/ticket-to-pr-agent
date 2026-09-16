@@ -41,6 +41,19 @@ Retrieval tier: **0.938** on the full corpus, **0.812** in CI on the 9-source su
 
 `agent_run`: 1 pass in 4 attempts. A single green there is one draw, not a rate, and [`gates.yaml`](../evals/gates.yaml) carries that history next to the threshold.
 
+## Keeping the split honest
+
+Every finding lands in `hard` or `adversarial`, so the set drifts away from
+70/20/10 as it improves. Adding filler cases to restore the ratio would be
+fixing the number rather than the set.
+
+The rule instead: **`hard` means the model still gets this wrong or nearly
+does.** A case that passes on every recent run is regression material, and it
+moves to `core`. Four moved that way on 2026-09-16 — they were hard because a
+scorer defect failed them, and they pass every run now that the defect is
+closed. Three others that also pass stayed `hard` on purpose: each is pinned to
+a closed defect and carries a `known-failure` tag a reader looks for.
+
 ## Failure modes
 
 22 tracked in [`failure-modes.csv`](../evals/failure-modes.csv). `make modes CHECK=1` runs in CI and refuses a mode marked closed without a test that exists.
