@@ -84,17 +84,44 @@ def _denied(detail: str) -> ToolResult:
     return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.DENIED, detail)))
 
 
+def _receipt(name: str, arguments: dict) -> dict:
+    """What the write would have been, in the words the real tool uses.
+
+    {"recorded": true} was not a receipt. An answer saying "I inserted the line
+    at line 0 of CHANGELOG.md" had no evidence behind it, so the judge scored
+    those cases 5, 2, 5, 5, 5 across passes — not wrong, undecidable, because
+    there was nothing to decide against. An unjudgeable case sitting in the set
+    undermines every aggregate computed beside it. F14.
+    """
+    # Every argument, not a chosen few. Picking fields by hand is how the
+    # first attempt at this shipped a receipt with new_str: null — the model
+    # passes the text under whichever key the tool defines, and a receipt that
+    # drops it leaves the answer's own quotation unbacked all over again. The
+    # same mistake as F21, one file over.
+    receipt = {"applied": True, "tool": name, **arguments}
+    if name == "comment_on_ticket":
+        body = arguments.get("body") or ""
+        receipt["posted"] = not arguments.get("dry_run")
+        receipt["summary"] = (f"{'would post' if arguments.get('dry_run') else 'posted'} "
+                              f"{len(body)} chars on #{arguments.get('issue_id')}")
+    elif name == "str_replace_based_edit_tool":
+        receipt["summary"] = f"{arguments.get('command')} on {arguments.get('path')}"
+    return receipt
+
+
 def _recorded(name: str, calls: list[dict]) -> Tool:
     """A write tool that records the attempt and performs nothing.
 
     Keeps side_effect=True so the runtime gate in front of it is the real one:
-    a case testing SHADOW_MODE tests the shipping guard, not this stub.
+    a case testing SHADOW_MODE tests the shipping guard, not this stub. And it
+    answers with what the write would have been, so an answer describing it has
+    something to be checked against.
     """
     real = TOOLS[name]
 
     def handler(arguments: dict) -> ToolResult:
         calls.append({"tool": name, "arguments": arguments})
-        return ToolResult(ok=True, data={"recorded": True, "tool": name})
+        return ToolResult(ok=True, data=_receipt(name, arguments))
 
     return Tool(name=name, handler=handler, description=real.description,
                 input_schema=real.input_schema, side_effect=True,
@@ -137,7 +164,10 @@ def _fixture_tools(case: GoldenCase, calls: list[dict]) -> dict[str, Tool]:
             return _denied("issue does not carry agent:ready — a human labels "
                            "an issue before the agent may work it")
         calls.append({"tool": "open_pr", "arguments": arguments})
-        return ToolResult(ok=True, data={"recorded": True, "number": 15})
+        return ToolResult(ok=True, data={
+            "opened": True, "number": 15, "draft": True,
+            "branch": f"agent/issue-{setup.issue}", **arguments,
+            "summary": f"opened draft PR #15 from agent/issue-{setup.issue}"})
 
     tools = dict(TOOLS)
     for name in tools:

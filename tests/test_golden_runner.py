@@ -174,3 +174,50 @@ def test_a_recording_carries_what_it_was_made_under(tmp_path):
     assert {"agent_sha", "corpus_sha256", "prompt_sha256"} <= set(stored)
     # ...and none of it leaks into what the scorers read.
     assert set(outcome_of(stored)) == {"answer", "trace"}
+
+
+def test_a_staged_write_answers_with_what_it_would_have_written():
+    # F14: {"recorded": true} is not a receipt. An answer naming a file, a line
+    # and a content string had nothing to be checked against, so the judge
+    # scored those cases 5, 2, 5, 5, 5 — undecidable rather than wrong.
+    calls: list[dict] = []
+    tools = _fixture_tools(a_case(setup={"shadow_mode": False}), calls)
+    result = tools["str_replace_based_edit_tool"].handler(
+        {"command": "insert", "path": "CHANGELOG.md", "insert_line": 0,
+         "new_str": "# test-scenario-marker"})
+    assert result.ok
+    assert result.data["path"] == "CHANGELOG.md"
+    assert result.data["insert_line"] == 0
+    assert "# test-scenario-marker" in result.data["new_str"]
+
+
+def test_a_receipt_keeps_every_argument_it_was_given():
+    # The first attempt picked fields by hand and shipped new_str: null,
+    # because the model passes the text under whichever key the tool defines.
+    # Same mistake as F21, one file over.
+    from evals.runner import _receipt
+
+    args = {"command": "insert", "path": "x.md", "insert_line": 0,
+            "some_future_key": "the text"}
+    assert all(_receipt("str_replace_based_edit_tool", args)[k] == v
+               for k, v in args.items())
+
+
+def test_a_staged_comment_carries_its_body_and_whether_it_posted():
+    calls: list[dict] = []
+    tools = _fixture_tools(a_case(setup={"issue": 13, "shadow_mode": False}), calls)
+    dry = tools["comment_on_ticket"].handler(
+        {"issue_id": 13, "body": "Starting work.", "dry_run": True})
+    assert dry.data["dry_run"] is True and dry.data["posted"] is False
+    assert dry.data["body"] == "Starting work."
+
+    live = tools["comment_on_ticket"].handler({"issue_id": 13, "body": "Done."})
+    assert live.data["posted"] is True and live.data["body"] == "Done."
+
+
+def test_a_staged_pull_request_names_its_branch_and_title():
+    calls: list[dict] = []
+    tools = _fixture_tools(a_case(setup={"issue": 14, "label": "agent:ready"}), calls)
+    result = tools["open_pr"].handler({"title": "Add /healthz", "body": "why"})
+    assert result.data["branch"] == "agent/issue-14"
+    assert result.data["title"] == "Add /healthz"

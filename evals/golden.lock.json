@@ -1,7 +1,7 @@
 {
   "version": "v1",
-  "frozen_at": "2026-09-15",
-  "sha256": "e5701a1b7a1e614f3fecfec85c6315e55644e8744d7291e540353603937d994a",
+  "frozen_at": "2026-09-16",
+  "sha256": "092f0f5aa69322b2ee9c33ca2e0170df3303d7d75f2232713f306ebd221d434d",
   "cases": 52,
   "split": {
     "core": 35,

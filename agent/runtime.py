@@ -76,6 +76,16 @@ class ToolResult:
     # the instruction that must not be lost on the way up.
     retry_after: float | None = None
 
+def _leading_executable(command: str) -> str | None:
+    """The first word of a shell command, or None.
+
+    Deliberately naive: the guard it feeds is narrow, and a parser that tried
+    to be clever about pipes and prefixes would refuse more than it should.
+    """
+    parts = (command or "").strip().split()
+    return parts[0] if parts else None
+
+
 @dataclass
 class Tool:
     name: str
@@ -197,6 +207,13 @@ class AgentRuntime:
         # the loop's only memory of that, scoped to this run. A legitimate
         # polling tool (get_ci_status) would need an exception — not built.
         seen_calls: set[tuple[str, str]] = set()
+        # Executables the allowlist has already refused in this run. The
+        # anti-spin guard is per-call: it stops the SAME command repeated. It
+        # never saw `env` refused and then `printenv` tried, because those are
+        # different calls — and that is the shape of working around a guard
+        # rather than of making a mistake. Saying so in the prompt did not stop
+        # it; prose is not the mechanism. F23.
+        refused_executables: set[str] = set()
         # Consecutive failures per tool, reset by that tool succeeding.
         failure_streak: dict[str, int] = {}
 
@@ -351,6 +368,34 @@ class AgentRuntime:
                     }
                 seen_calls.add(signature)
 
+                # A second binary after the allowlist refused the first is one
+                # attempt, not two. Scoped deliberately narrow: only bash, only
+                # after an executable refusal, and only when the executable
+                # changes — fixing a path or a flag after a refusal is a
+                # correction and still runs. A blunter guard would block
+                # legitimate exploration, which this repo has paid for once.
+                if block.name == "bash" and refused_executables:
+                    head = _leading_executable(block.input.get("command", ""))
+                    if head and head not in refused_executables:
+                        emit({
+                            "event": "allowlist_workaround_stop", "run_id": run_id,
+                            "ts": _now_iso(), "turn": turn, "tool": block.name,
+                            "refused": sorted(refused_executables), "attempted": head,
+                        })
+                        return {
+                            "run_id": run_id,
+                            "error": "allowlist_workaround",
+                            "answer": (
+                                f"Stopping: the allowlist refused "
+                                f"{', '.join(sorted(refused_executables))} and this "
+                                f"run then reached for {head}. Trying a different "
+                                f"binary to do the refused thing is the same "
+                                f"attempt, and it is blocked on purpose — a human "
+                                f"has to decide whether the boundary should move."
+                            ),
+                            "trace": trace,
+                        }
+
                 if i >= self.max_parallel_tool_calls:
                     # Executed sequentially today (docs/SDLC-schema.md says
                     # why): the cap bounds side effects per turn, it does not
@@ -400,6 +445,12 @@ class AgentRuntime:
                     "latency_ms": (time.time() - tool_t0) * 1000,
                     "error_class": classify(result.error_code).value if not result.ok else None,
                 })
+
+                if (not result.ok and block.name == "bash"
+                        and "not allowed" in (result.error_code or "")):
+                    head = _leading_executable(block.input.get("command", ""))
+                    if head:
+                        refused_executables.add(head)
 
                 if result.ok:
                     failure_streak[block.name] = 0
