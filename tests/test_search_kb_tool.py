@@ -79,3 +79,23 @@ def test_embedding_service_error_reported_specifically():
 
     assert not result.ok
     assert result.error_code == "unavailable: embedding service: boom"
+
+
+def test_grounding_forbids_declaring_a_question_out_of_scope_then_answering_it():
+    # F9: asked for the boiling point of tungsten, the agent wrote that the
+    # question had no connection to any of its tools — and then gave the
+    # number, from memory, correctly. A right answer produced by the mechanism
+    # that produces wrong ones is indistinguishable from one afterwards.
+    from rag.retrieve import GROUNDING
+
+    assert "stop there" in GROUNDING
+    assert "indistinguishable" in GROUNDING
+
+
+def test_grounding_says_which_repository_the_corpus_describes():
+    # F10: asked what conventions the target repository follows, the agent
+    # searched the corpus, retrieved this project's own SPEC, and offered
+    # POST /v1/run as the answer — a citation from the wrong repository.
+    from rag.retrieve import GROUNDING
+
+    assert "neither describes the target repository" in GROUNDING

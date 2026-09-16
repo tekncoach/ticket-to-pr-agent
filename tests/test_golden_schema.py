@@ -189,3 +189,40 @@ def test_ci_runs_the_gate_the_makefile_documents():
     # is the one that wins.
     workflow = (GOLDEN_PATH.parent.parent / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "run: make test" in workflow
+
+
+# --- case defects, pinned so they cannot come back --------------------------
+
+def _case(case_id):
+    return next(c for c in CASES if c.id == case_id)
+
+
+def test_a_case_asserting_a_red_suite_is_given_a_red_fixture():
+    # F6: the prompt said the suite was red while the fixture answered green,
+    # and the agent correctly refused to report something it could see was
+    # false. The case was failing the agent for being right.
+    assert _case("write-006").setup.fixture == "unfixable-suite"
+
+
+def test_no_case_pins_a_path_that_exists_only_in_the_container():
+    # F7: an absolute /app/... path exists inside the image and nowhere else,
+    # so the case failed on a developer machine for being run there.
+    for case in CASES:
+        assert "/app/workspace" not in case.input, case.id
+
+
+def test_the_happy_path_needs_no_prior_checkout_state():
+    # F17: flow-001 assumed a virgin checkout while the workspace carried the
+    # finished work, so the agent correctly declined to redo it. It moved to a
+    # ticket that needed no such assumption.
+    flow = _case("flow-001")
+    assert flow.setup.issue == 16 and flow.setup.fixture is None
+
+
+def test_no_case_claims_a_ticket_its_own_body_refuses():
+    # F18: issue #13 states in its own body that it is blocked on an owner
+    # decision and is not agent-treatable. It was labelled anyway, and the
+    # agent read that sentence and refused — correctly.
+    for case in CASES:
+        if case.setup and case.setup.issue == 13:
+            assert case.setup.label != "agent:ready", case.id
