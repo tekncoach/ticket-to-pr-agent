@@ -129,12 +129,14 @@ golden-record:
 golden-replay:
 	uv run python -m evals.replay
 
-# Install scripts/pre-push as the local gate. CI runs the hermetic half; the
-# eval half needs the corpus and the target checkout, which a stateless runner
-# does not have — see evals/README.md.
+# Point git at the hooks in the tree, rather than copying one into .git/hooks.
+# A copy lives in a directory git does not clone, so it exists on exactly one
+# machine and nobody else finds out it was supposed to. core.hooksPath is one
+# line, applies to every hook in scripts/githooks/, and survives a re-clone as
+# a documented setup step rather than as folklore.
 hooks:
-	install -m 755 scripts/pre-push .git/hooks/pre-push
-	@echo "installed .git/hooks/pre-push"
+	git config core.hooksPath scripts/githooks
+	@echo "git hooks now run from scripts/githooks/ — see the README Quickstart"
 
 # Verify the lock without writing: non-zero if golden.jsonl has drifted from
 # what was frozen, and it names which field moved.

@@ -129,6 +129,7 @@ Measured, not estimated — from the traces in `tmp/sessions/`, on `claude-haiku
 ## Quickstart
 
 ```bash
+make hooks        # once per clone: the pre-push gate — unit suite, frozen set, evals
 make run          # http://localhost:8000 — the demo page, hot-reloading
 make docker-up    # the same thing as the container the VM runs
 make test         # 283 hermetic tests, no key needed
