@@ -57,9 +57,21 @@ def _rate_alerts(name: str, base, late) -> list[str]:
     return []
 
 
+def _scope(report: dict) -> str:
+    return ",".join((report.get("scope") or {}).get("tier") or ["mixed"])
+
+
 def compare(baseline: dict, latest: dict) -> list[str]:
     """Alerts, loudest first. Empty means nothing moved that a draw explains."""
     alerts: list[str] = []
+
+    # A retrieval run and a model run are not the same measurement, and
+    # subtracting one from the other manufactures a delta out of a change of
+    # subject. Refused rather than reported, because the numbers it would
+    # produce look exactly like real ones.
+    if _scope(baseline) != _scope(latest):
+        return [f"DRIFT incomparable: baseline is {_scope(baseline)}, "
+                f"latest is {_scope(latest)} — compare like with like"]
     b, l = baseline.get("metrics", {}), latest.get("metrics", {})
 
     for name in ("pass_at_1", "p0_pass_rate", "grounded_rate", "mean_faithfulness"):
@@ -123,12 +135,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Compare a run to a baseline.")
     parser.add_argument("--baseline", type=Path, default=RESULTS / "baseline.json")
     parser.add_argument("--latest", type=Path, default=RESULTS / "latest.json")
+    parser.add_argument("--allow-empty", action="store_true",
+                        help="exit 0 when the latest run is missing (CI before "
+                             "anything has been recorded)")
     parser.add_argument("--fail-on-drift", action="store_true")
     args = parser.parse_args()
 
-    if not args.baseline.exists():
-        print(f"no baseline at {args.baseline} — copy a run you trust onto it")
-        return 0
+    if not args.baseline.exists() or not args.latest.exists():
+        missing = args.baseline if not args.baseline.exists() else args.latest
+        print(f"nothing to compare: {missing} is not there")
+        return 0 if args.allow_empty else 1
 
     alerts = compare(_load(args.baseline), _load(args.latest))
     for alert in alerts:

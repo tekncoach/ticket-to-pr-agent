@@ -54,6 +54,11 @@ jobs:
       # exists. Free, and it is what keeps "fixed" from being an opinion.
       - run: make modes CHECK=1
       - run: make golden-ci
+      # The drift gate, blocking. A mechanism that exists and a mechanism that
+      # gates are different claims, and only the second survives "show me the
+      # log where it blocked a merge". Verified against a synthetic case flip:
+      # one case turned failing, exit code 1.
+      - run: make drift-check
       # And the frozen runs, re-scored against the current scorers. This is
       # what catches a scorer or threshold change that would re-judge past
       # behaviour — it cannot catch an agent regression, which needs the data

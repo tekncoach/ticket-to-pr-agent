@@ -110,3 +110,19 @@ def test_an_unchanged_environment_says_nothing():
 def test_two_identical_runs_produce_no_drift():
     r = report({"min": 0.8, "max": 0.9}, cases=[{"id": "a", "pass": True}])
     assert drifts(compare(r, r)) == []
+
+
+def test_runs_of_different_scope_refuse_to_be_compared():
+    # A retrieval run and a model run are not the same measurement, and
+    # subtracting one from the other manufactures a delta out of a change of
+    # subject — one that looks exactly like a real one.
+    base = report({"min": 0.9, "max": 0.9}); base["scope"] = {"tier": ["retrieval"]}
+    late = report({"min": 0.6, "max": 0.6}); late["scope"] = {"tier": ["single_turn"]}
+    alerts = compare(base, late)
+    assert alerts == [a for a in alerts if "incomparable" in a]
+
+
+def test_the_same_scope_compares_normally():
+    base = report({"min": 0.9, "max": 0.9}); base["scope"] = {"tier": ["retrieval"]}
+    late = report({"min": 0.9, "max": 0.9}); late["scope"] = {"tier": ["retrieval"]}
+    assert drifts(compare(base, late)) == []

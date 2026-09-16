@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift trend judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -102,6 +102,15 @@ golden-ci:
 #   make drift FAIL=1   exit non-zero on drift
 drift:
 	uv run python -m evals.drift $(if $(FAIL),--fail-on-drift,)
+
+# What CI runs: the replay corpus re-scored against the committed baseline,
+# blocking. A mechanism that exists and a mechanism that gates are different
+# claims, and only the second survives "show me the log where it blocked".
+drift-check:
+	VECTOR_DB_PATH=data/kb-ci/kb.sqlite3 EVAL_RESULTS_DIR=$(CURDIR)/.ci-run \
+	  uv run python -m evals.run --tier retrieval --gates ci_retrieval --no-gate
+	uv run python -m evals.drift --baseline evals/results/baseline-ci.json \
+	  --latest .ci-run/latest.json --fail-on-drift
 
 # Signals across the whole run history, grouped by scope. drift compares a
 # pair and catches a step; this catches a slide — five runs each a point lower
