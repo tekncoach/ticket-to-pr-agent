@@ -1,4 +1,4 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift trend judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -102,6 +102,13 @@ golden-ci:
 #   make drift FAIL=1   exit non-zero on drift
 drift:
 	uv run python -m evals.drift $(if $(FAIL),--fail-on-drift,)
+
+# Signals across the whole run history, grouped by scope. drift compares a
+# pair and catches a step; this catches a slide — five runs each a point lower
+# than the last, every pair inside the noise.
+#   make trend TIER=single_turn
+trend:
+	uv run python -m evals.trend $(if $(TIER),--tier $(TIER),)
 
 # The failure-mode sheet. No argument: what is open, closed and accepted.
 #   make modes CHECK=1    every closed mode names a test that exists

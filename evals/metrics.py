@@ -46,7 +46,7 @@ def spread(values: list[float]) -> dict | None:
 def case_facts(case: GoldenCase, outcome: dict, score: CaseScore,
                wall_ms: float) -> dict:
     """What one scored case contributes to the suite numbers."""
-    from evals.scorers import called_tools, tool_results
+    from evals.scorers import called_tools, refused, tool_results
 
     called = set(called_tools(outcome))
     expected = set(case.expected_tools)
@@ -77,11 +77,24 @@ def case_facts(case: GoldenCase, outcome: dict, score: CaseScore,
         # proved — score_case reports the judge-only ones as unchecked, and a
         # gate must not treat "nobody looked" as "did not happen".
         "violated": list(score.violated),
+        # Watched over time rather than gated: the signals that move before
+        # quality does are the only ones production gives you without labels.
+        "refused": refused(outcome),
+        "tools_called": sorted(called),
     }
 
 
 def _mean(values: list[float]) -> float | None:
     return round(sum(values) / len(values), 3) if values else None
+
+
+def _tool_mix(facts: list[dict]) -> dict[str, float]:
+    counts: dict[str, int] = {}
+    for fact in facts:
+        for tool in fact.get("tools_called") or []:
+            counts[tool] = counts.get(tool, 0) + 1
+    total = sum(counts.values())
+    return {t: round(n / total, 3) for t, n in sorted(counts.items())} if total else {}
 
 
 def _cost_usd(facts: list[dict]) -> float | None:
@@ -148,6 +161,11 @@ def summarize(passes: list[list[dict]], elapsed_s: float) -> dict[str, Any]:
         # hardcode a vendor price list that goes stale without telling anyone.
         "cost_usd_per_case": _cost_usd(flat),
         "violations": dict(sorted(violations.items())),
+        "refusal_rate": _mean([1.0 if f.get("refused") else 0.0 for f in flat]),
+        # Which tools the agent reaches for, as shares. A mix shifting is drift
+        # even when every rate holds — it is the same answer arrived at
+        # differently, and the different way is usually worse.
+        "tool_mix": _tool_mix(flat),
         "unstable_cases": sorted(cid for cid, seen in by_case.items() if len(seen) > 1),
         "elapsed_s": round(elapsed_s, 1),
     }

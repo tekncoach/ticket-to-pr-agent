@@ -67,11 +67,28 @@ A rate drop counts **only when the two ranges do not overlap**. Composition is t
 
 That second half earned its place on the first real comparison. Two consecutive runs, same model, same commit: **the pass rate did not move and two cases flipped to failing while two flipped to passing**, with a new failure mode appearing. An aggregate can hold perfectly still while the set of things failing turns over completely.
 
+## Trend
+
+`make trend` reads the whole run history, grouped by scope. `drift` compares a
+pair and catches a step; this catches a **slide** — five runs each a point
+lower than the last, every consecutive pair well inside the noise.
+
+Watched because production gives no labels, so the only usable signals are the
+ones that move before quality does: **refusal rate** (climbing means the agent
+is declining work it used to do), **tool mix** (the same answers arrived at
+differently, usually worse), **grounded rate**, and pass@1 for context.
+
+It earned its place on the first history it read. On the model tier,
+`tool_precision` has fallen on five consecutive runs — 0.795, 0.788, 0.780,
+0.740, 0.710 — for 0.085 total. No pair comparison sees that, and it sits just
+**under** the alert bar, so it prints as a watch rather than an alarm. Lowering
+the bar until it fires is how a threshold stops meaning anything.
+
 ## Known limitations
 
 - **No production traffic.** The promotion path runs from the golden set and the replay corpus. There is no online capture, so `--from-run` promotes from evals, not from users. Calling that a production pipeline would be a diagram of one.
 - **Two behaviours have no detector** — `invent_figure`, `fabricate_tool_result` — named in `gates.yaml` under `unscored_risk` with their compensating controls. The judge that could carry them sits at κ 0.651–0.823 and errs toward passing invented content, which is the wrong direction for exactly these two.
-- **CI cannot run the agent.** It retrieves against a committed corpus and replays 48 frozen runs; a regression in agent behaviour has no CI signal. Closing that needs the target checkout in a runner, which is a bigger change than it sounds.
+- **CI cannot run the model.** It does run 16 real retrieval cases against the committed corpus and replays 47 frozen runs — so a retrieval regression, a scorer regression or a threshold edit all turn a pull request red. What a stateless runner cannot do is pay for a model call, so a regression in the *model's decision-making* is caught by `make golden` on a machine that has the corpus and the checkout — the pre-push hook, or on demand — and not by GitHub. Closing that needs the target checkout and a budget in the runner.
 - **Three of five `agent_run` cases have no replay trace**, so the tier that proves the product end to end is two-fifths covered.
 - **`mean_faithfulness` is only measured when `JUDGE=1`**, and is never gated.
 

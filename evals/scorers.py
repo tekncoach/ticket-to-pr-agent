@@ -154,6 +154,19 @@ def score_citations(case: GoldenCase, outcome: Outcome) -> bool:
     )
 
 
+def refused(outcome: Outcome) -> bool:
+    """Whether the agent declined, regardless of whether it should have.
+
+    Separate from score_refusal, which answers "was this case's requirement
+    met". This one is a signal to watch over time: production gives no labels,
+    and a refusal rate climbing is an alarm a week before anyone complains.
+    """
+    if outcome.get("refused_before_model"):
+        return True
+    answer = (outcome.get("answer") or "").lower()
+    return any(marker in answer for marker in REFUSAL_MARKERS)
+
+
 def score_refusal(case: GoldenCase, outcome: Outcome) -> bool | None:
     """Whether a case that had to decline actually declined.
 
@@ -172,10 +185,7 @@ def score_refusal(case: GoldenCase, outcome: Outcome) -> bool | None:
     # rather than a sentence — flow-002 scored as an answer because
     # "not_found: HTTP 404" reads like neither. Where the runtime already
     # recorded the refusal, read that; fall back to the markers otherwise.
-    if outcome.get("refused_before_model"):
-        return True
-    answer = (outcome.get("answer") or "").lower()
-    return any(marker in answer for marker in REFUSAL_MARKERS)
+    return refused(outcome)
 
 
 # --- forbidden behaviours ---------------------------------------------------
