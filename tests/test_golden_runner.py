@@ -160,3 +160,17 @@ def test_a_fixture_is_a_claim_about_the_world_and_the_claim_is_checked(monkeypat
 
     monkeypatch.setattr(runner, "_workspace_branch", lambda: "agent/issue-14")
     assert runner.missing_fixture(case) is None
+
+
+def test_a_recording_carries_what_it_was_made_under(tmp_path):
+    # Without this a replay cannot say whether it is scoring current behaviour
+    # or a museum piece: the golden hash was recorded, the agent and the prompt
+    # were not, so changing either left replay silently green on old behaviour.
+    from evals.replay import outcome_of, record
+    import json
+
+    path = record("t-1", {"answer": "x", "trace": []}, "sha", tmp_path)
+    stored = json.loads(path.read_text(encoding="utf-8"))
+    assert {"agent_sha", "corpus_sha256", "prompt_sha256"} <= set(stored)
+    # ...and none of it leaks into what the scorers read.
+    assert set(outcome_of(stored)) == {"answer", "trace"}

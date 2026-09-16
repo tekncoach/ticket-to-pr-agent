@@ -33,6 +33,21 @@ from evals.scorers import score_case
 TRACES_DIR = Path(__file__).parent / "traces"
 
 
+def provenance() -> dict:
+    """What a recording was made under. Without it a replay cannot say whether
+    it is scoring current behaviour or a museum piece."""
+    from evals.run import _agent_sha, _corpus_sha
+    import hashlib
+
+    from agent.factory import SYSTEM_PROMPT
+
+    return {
+        "agent_sha": _agent_sha(),
+        "corpus_sha256": _corpus_sha(),
+        "prompt_sha256": hashlib.sha256(SYSTEM_PROMPT.encode("utf-8")).hexdigest()[:12],
+    }
+
+
 def record(case_id: str, outcome: dict, golden_sha: str,
            directory: Path = TRACES_DIR) -> Path:
     """Freeze one run so it can be scored again without being re-run."""
@@ -49,12 +64,14 @@ def record(case_id: str, outcome: dict, golden_sha: str,
         "case_id": case_id,
         "recorded_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
         "golden_sha256": golden_sha,
+        **provenance(),
     }, ensure_ascii=False) + "\n", encoding="utf-8")
     return path
 
 
 # Written by record(), not by the run. Everything else in the file is outcome.
-_RECORD_KEYS = frozenset({"case_id", "recorded_at", "golden_sha256"})
+_RECORD_KEYS = frozenset({"case_id", "recorded_at", "golden_sha256",
+                          "agent_sha", "corpus_sha256", "prompt_sha256"})
 
 
 def outcome_of(recorded: dict) -> dict:
@@ -105,7 +122,17 @@ def main() -> int:
         return 0
 
     cases = {c.id: c for c in load_golden()}
+    now = provenance()
     facts, orphans, stale = [], [], []
+    # Recorded under a different agent or prompt. Not a failure — replay tests
+    # the scorers, not the agent, and re-recording on every commit is exactly
+    # the noise that gets a gate switched off. But a replay corpus frozen under
+    # a prompt nobody runs any more is a museum piece, and the number saying
+    # how much of it that is belongs in the output.
+    from_elsewhere = sum(
+        1 for run in recorded.values()
+        if run.get("prompt_sha256") not in (None, now["prompt_sha256"])
+        or run.get("agent_sha") not in (None, now["agent_sha"]))
     for case_id, run in recorded.items():
         case = cases.get(case_id)
         if case is None:
@@ -136,8 +163,12 @@ def main() -> int:
         print(f"\norphaned recordings (case gone): {orphans}")
     if stale:
         print(f"\nrecorded against an older golden set: {len(stale)} of {len(recorded)}")
+    if from_elsewhere:
+        print(f"\n{from_elsewhere} of {len(recorded)} recorded under a different "
+              f"agent or system prompt — re-record with `make golden-record`")
     print(f"\n{'REPLAY GATE PASS' if ok else 'REPLAY GATE FAIL'} "
-          f"({len(facts)} recorded runs re-scored)")
+          f"({len(facts)} recorded runs re-scored — this checks the scorers "
+          f"and thresholds, never the agent)")
     return 0 if (ok or args.no_gate) else 1
 
 
