@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 
 from agent.config import SESSIONS_DIR, shadow_mode
 from agent.errors import ErrorClass, classify
+from agent.consent import authorise, clear
 from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
 from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
 from agent.runtime import AgentRuntime
@@ -277,7 +278,14 @@ def run_ticket(req: RunRequest, request: Request):
         status = 403 if classify(ready.error_code) is ErrorClass.DENIED else 502
         return JSONResponse(status_code=status, content={"error": ready.error_code})
 
-    result = _get_runtime().run(task_prompt(req.issue), run_id=request.state.request_id)
+    # Only now may anything write for this ticket. Read again by edit_file and
+    # open_pr at the moment they write, because a human can unlabel or close an
+    # issue inside the minutes a run takes.
+    authorise(req.issue)
+    try:
+        result = _get_runtime().run(task_prompt(req.issue), run_id=request.state.request_id)
+    finally:
+        clear()
     return {"issue": ready.data, **result}
 
 

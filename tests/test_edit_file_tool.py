@@ -198,3 +198,81 @@ def test_an_ambiguous_match_now_says_how_many_it_found(tmp_path):
     (tmp_path / "a.txt").write_text("foo\nfoo\nfoo\n")
     result = _call(tmp_path, command="str_replace", path="a.txt", old_str="foo", new_str="bar")
     assert "matches 3 times" in result.error_code
+
+
+# --- the label contract, at the first write (F24) ---------------------------
+
+def test_a_write_for_an_unlabelled_ticket_is_refused():
+    # agent:ready was checked at the service door and inside open_pr before it
+    # proposed. Neither is where the first write happens, so an issue nobody
+    # authorised could have code written for it and only the proposal was
+    # refused — with the working tree already changed.
+    from unittest.mock import patch
+
+    from agent.consent import authorise, clear
+    from agent.runtime import ToolResult
+    from tools.edit_file import edit_file
+
+    denied = ToolResult(ok=False, error_code="denied: issue #13 does not carry agent:ready")
+    try:
+        authorise(13)
+        with patch("tools.edit_file.check_ready", return_value=denied) as checked:
+            result = edit_file.handler({"command": "insert", "path": "CHANGELOG.md",
+                                        "insert_line": 0, "new_str": "x"})
+        assert not result.ok and "agent:ready" in result.error_code
+        assert checked.called, "the label is re-read at write time, not trusted from the door"
+    finally:
+        clear()
+
+
+def test_reading_is_not_gated_by_the_label():
+    # view changes nothing, and refusing it would block the exploration a run
+    # needs before it can decide anything.
+    from unittest.mock import patch
+
+    from agent.consent import authorise, clear
+    from tools.edit_file import edit_file
+
+    try:
+        authorise(13)
+        with patch("tools.edit_file.check_ready") as checked:
+            edit_file.handler({"command": "view", "path": "README.md"})
+        assert not checked.called
+    finally:
+        clear()
+
+
+def test_a_run_with_no_ticket_is_governed_by_the_write_gate_alone():
+    # A direct operator request with writes enabled is the operator's decision,
+    # not the agent's. The label governs ticket work; SHADOW_MODE governs
+    # whether this instance may write at all.
+    from unittest.mock import patch
+
+    from agent.consent import clear
+    from tools.edit_file import edit_file
+
+    clear()
+    with patch("tools.edit_file.check_ready") as checked:
+        edit_file.handler({"command": "view", "path": "README.md"})
+    assert not checked.called
+
+
+def test_the_authorisation_does_not_leak_between_runs():
+    # A ContextVar rather than a module global: one process serves concurrent
+    # requests, and a global would carry one request's authorisation into
+    # another's write.
+    import asyncio
+
+    from agent.consent import authorise, authorised_issue, clear
+
+    async def one(issue):
+        authorise(issue)
+        await asyncio.sleep(0)
+        return authorised_issue()
+
+    async def both():
+        return await asyncio.gather(one(13), one(14))
+
+    clear()
+    assert set(asyncio.run(both())) == {13, 14}
+    assert authorised_issue() is None, "neither run leaked into the caller"

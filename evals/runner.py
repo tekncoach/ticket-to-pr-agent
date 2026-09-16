@@ -21,6 +21,7 @@ import time
 from pathlib import Path
 
 from agent.config import WORKSPACE
+from agent.consent import authorise, clear
 from agent.errors import ErrorClass, ToolError
 from agent.factory import TOOLS, build_runtime
 from agent.runtime import Tool, ToolResult
@@ -210,6 +211,30 @@ def run_retrieval_case(case: GoldenCase) -> dict:
     }
 
 
+def _staged_consent(case: GoldenCase):
+    from agent.tickets import READY_LABEL
+    """check_ready, answered from the case rather than from GitHub.
+
+    edit_file re-reads the label before every writing command (F24). At this
+    tier that must not become a live API call per write — the point of the tier
+    is that it runs offline in seconds — so the answer comes from setup.label,
+    which is what the case is asserting about anyway.
+    """
+    from unittest.mock import patch
+
+    setup = case.setup
+    issue = setup.issue if setup else None
+    label = setup.label if setup else None
+
+    def check(issue_id: int) -> ToolResult:
+        if label == READY_LABEL:
+            return ToolResult(ok=True, data={"number": issue_id})
+        return _denied(f"issue #{issue_id} does not carry {READY_LABEL} — "
+                       f"a human labels an issue before the agent may work it")
+
+    return issue, patch("tools.edit_file.check_ready", side_effect=check)
+
+
 def run_single_turn_case(case: GoldenCase, model: str | None = None) -> dict:
     calls: list[dict] = []
     runtime = build_runtime(model=model)
@@ -218,7 +243,17 @@ def run_single_turn_case(case: GoldenCase, model: str | None = None) -> dict:
     # differ only here, and reading the process env would make them the same run.
     shadow = True if case.setup is None or case.setup.shadow_mode is None else case.setup.shadow_mode
     runtime.allow_side_effects = (lambda: not shadow)
-    outcome = runtime.run(case.input)
+
+    # A case naming a ticket is a case about that ticket, so the same
+    # authorisation the service door sets is set here — and refused by the
+    # re-read when the label is absent, which is the whole of F24.
+    issue, staged = _staged_consent(case)
+    try:
+        authorise(issue)
+        with staged:
+            outcome = runtime.run(case.input)
+    finally:
+        clear()
     outcome["recorded_writes"] = calls
     return outcome
 
@@ -235,7 +270,7 @@ def run_agent_run_case(case: GoldenCase, model: str | None = None) -> dict:
     it, behind the same label check, so what this scores is the production
     path rather than a rehearsal of it.
     """
-    from agent.tickets import check_ready, task_prompt
+    from agent.tickets import READY_LABEL, check_ready, task_prompt
 
     setup = case.setup
     issue = setup.issue if setup else None
@@ -248,6 +283,8 @@ def run_agent_run_case(case: GoldenCase, model: str | None = None) -> dict:
     if not consent.ok:
         return {"run_id": f"consent-{case.id}", "answer": consent.error_code,
                 "trace": [], "refused_before_model": True}
+    # Only now may anything write for this ticket.
+    authorise(issue)
 
     runtime = build_runtime(model=model)
     runtime.max_turns = AGENT_RUN_MAX_TURNS

@@ -25,7 +25,9 @@ from pathlib import Path
 
 from agent.config import AUTH_SENSITIVE_SYMBOLS, WORKSPACE
 from agent.errors import ErrorClass, ToolError
+from agent.consent import authorised_issue
 from agent.runtime import Tool, ToolResult
+from agent.tickets import check_ready
 from agent.workspace_guard import resolve_within_workspace
 
 DENYLIST = ("crypto.py", "migrations")
@@ -66,8 +68,27 @@ def _missing(detail: str) -> ToolResult:
     return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.NOT_FOUND, detail)))
 
 
+# view changes nothing; the rest do.
+_WRITING_COMMANDS = frozenset({"create", "str_replace", "insert", "undo_edit"})
+
+
 def _handler(arguments: dict) -> ToolResult:
     command = arguments.get("command")
+
+    # The label contract, checked where the first write happens rather than
+    # only where the proposal does. open_pr re-read it before proposing, so an
+    # unlabelled issue could still have code written for it — refused at the
+    # end, with the working tree already changed. F24.
+    #
+    # Re-read, not trusted from the door: a run takes minutes, and a human can
+    # unlabel or close an issue inside that window. Same reasoning as
+    # tools/open_pr.py.
+    if command in _WRITING_COMMANDS:
+        issue_id = authorised_issue()
+        if issue_id is not None:
+            consent = check_ready(issue_id)
+            if not consent.ok:
+                return ToolResult(ok=False, error_code=consent.error_code)
     raw_path = arguments.get("path")
     if not raw_path:
         return _invalid("missing path")

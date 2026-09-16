@@ -1,22 +1,22 @@
 {
   "version": "v1",
   "frozen_at": "2026-09-16",
-  "sha256": "092f0f5aa69322b2ee9c33ca2e0170df3303d7d75f2232713f306ebd221d434d",
-  "cases": 52,
+  "sha256": "4df6fcfc5604cd7cab9e37dee66fd0bc2125ea3dab2c036d7b6330cd94f99900",
+  "cases": 56,
   "split": {
-    "core": 35,
-    "hard": 12,
-    "adversarial": 5
+    "core": 37,
+    "hard": 13,
+    "adversarial": 6
   },
   "tier": {
-    "agent_run": 5,
-    "retrieval": 17,
-    "single_turn": 30
+    "agent_run": 6,
+    "retrieval": 18,
+    "single_turn": 32
   },
   "severity": {
-    "P0": 16,
-    "P1": 28,
-    "P2": 8
+    "P0": 18,
+    "P1": 29,
+    "P2": 9
   },
-  "observed_origin": 42
+  "observed_origin": 45
 }
