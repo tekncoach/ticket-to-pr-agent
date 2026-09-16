@@ -113,7 +113,7 @@ Measured, not estimated — from the traces in `tmp/sessions/`, on `claude-haiku
 | Golden set, first full pass | **31 of 44** scored cases, `make golden` — 16 retrieval cases free, 28 model cases in ~135s |
 | Judge agreement with human labels | quadratic κ **0.651–0.823** over five passes, median 0.670 |
 
-**Known limits, named because they are the questions an interviewer asks:**
+**Known limits, named because someone evaluating this will ask:**
 
 - **One completed ticket, not a track record.** The loop has run end to end once, on one narrow ticket, and took eight attempts to get there. A first-attempt CI-pass rate needs a run of tickets behind it, and this project does not have one yet.
 - **Six of those eight blockers were our own guards**, not the model: `sed` refused outright, globs unexpanded, `git log` denied, a fruitless `grep` reported as a tool failure, and — the worst — an auth-symbol denylist that listed `get_session_user`, the dependency *every* protected endpoint declares, so writing any protected endpoint was blocked. A guard has to name what must not be **altered**, not what may not be **called**; one that blocks correct work is one that gets switched off rather than fixed. Each is now a fix with a regression test, and the whole arc is in commit `129ab0c`.
