@@ -1,4 +1,8 @@
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit judge-dump judge-calibrate hooks docker-up docker-down
+# The repository the agent works. Overridden by .env; named here so the
+# shadow audit can ask GitHub about it without loading the agent.
+TARGET_REPO ?= tekncoach/liberty-rider-myroadtrips
+
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit shadow-harvest shadow-run shadow-audit-before shadow-audit-after judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -118,6 +122,25 @@ drift-check:
 #   make trend TIER=single_turn
 trend:
 	uv run python -m evals.trend $(if $(TIER),--tier $(TIER),)
+
+# Shadow mode — see shadow/README.md. Traffic is issue -> merged-PR pairs from
+# a repository we do not own, because a ticket rebuilt from the change that
+# resolved it already contains the answer.
+shadow-harvest:
+	uv run python -m shadow.harvest --repo $(REPO) $(if $(WANT),--want $(WANT),)
+
+# The batch. LIMIT is deliberately small and shadow/README.md says why.
+shadow-run:
+	uv run --env-file .env python -m shadow.runner $(if $(LIMIT),--limit $(LIMIT),) \
+	  $(if $(MODEL),--model $(MODEL),)
+
+# Proof of zero writes, from the integration rather than from our own flag.
+# Take the snapshot BEFORE the batch; compare after.
+shadow-audit-before:
+	uv run python -m shadow.audit before --repo $(TARGET_REPO) --issues $(ISSUES)
+
+shadow-audit-after:
+	uv run python -m shadow.audit after --repo $(TARGET_REPO)
 
 # The brief for a reviewer with none of this repository's context. Paste it to
 # a fresh agent before a submission or a release — docs/COLD-AUDIT.md says why,
