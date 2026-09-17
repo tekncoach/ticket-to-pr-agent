@@ -18,13 +18,53 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
+import sys
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from agent.secrets_redaction import redact_secrets
-
 HERE = Path(__file__).parent
+CLONES = HERE / "clones"
+# Mirrors tools/edit_file.py: view changes nothing.
+WRITING_EDIT_COMMANDS = frozenset({"create", "str_replace", "insert", "undo_edit"})
+# A proposal needs room to be reached. The default eight turns died mid
+# exploration on every unit, so the record carried a file list and no proposal
+# — the one field the comparison is for.
+MAX_TURNS = int(os.environ.get("SHADOW_MAX_TURNS", "30"))
+
+
+def point_agent_at(repo: str, workspace: Path | None = None) -> Path:
+    """Aim the agent at the repository this traffic came from.
+
+    Must run BEFORE anything under agent/ is imported. agent/config.py reads
+    TARGET_REPO and TARGET_WORKSPACE at import time and freezes them into
+    module constants that tools/bash.py and tools/edit_file.py then hold, so
+    setting the environment afterwards changes nothing and the run silently
+    works against the wrong checkout — which is exactly what the first shadow
+    batch did: sixty issues from one repository handed to an agent looking at
+    another, refused every time for the obvious reason.
+    """
+    target = workspace or (CLONES / repo.replace("/", "-"))
+    os.environ["TARGET_REPO"] = repo
+    os.environ["TARGET_WORKSPACE"] = str(target)
+    # run_tests needs the target's own interpreter, and a clone has no venv.
+    # Pointed at ours so the tool fails with a clear import error rather than
+    # a missing binary; shadow compares proposals, not green suites.
+    os.environ.setdefault("TARGET_PYTHON", sys.executable)
+    return target
+
+
+def ensure_clone(repo: str, target: Path) -> bool:
+    """A shallow checkout, so bash and the editor have something real to read."""
+    if (target / ".git").exists():
+        return True
+    target.parent.mkdir(parents=True, exist_ok=True)
+    done = subprocess.run(
+        ["git", "clone", "--depth", "50", f"https://github.com/{repo}.git", str(target)],
+        capture_output=True, text=True, timeout=300)
+    return done.returncode == 0
 
 # Redaction beyond secrets: an issue body is written by a member of the public.
 import re
@@ -64,10 +104,48 @@ def redact(text: str) -> str:
     """
     if not text:
         return text
+    from agent.secrets_redaction import redact_secrets
+
     text = redact_secrets(text)
     text = EMAIL.sub("[EMAIL]", text)
     text = PHONE.sub("[PHONE]", text)
     return HANDLE.sub("[HANDLE]", text)
+
+
+def shadowed_tools(tools: dict, intended: list[dict]) -> dict:
+    """Every write tool replaced by a no-op that returns what it meant to do.
+
+    side_effect stays True so the runtime's own accounting is unchanged, and
+    the receipt carries the full arguments rather than a boolean — an answer
+    quoting a file and a line needs something to be checked against, which is
+    the same lesson the eval harness learned as F14.
+    """
+    from agent.runtime import Tool, ToolResult
+
+    out = dict(tools)
+    for name, tool in tools.items():
+        if not tool.side_effect:
+            continue
+
+        def handler(arguments: dict, _name=name) -> ToolResult:
+            # The editor is one tool with several commands and only some write.
+            # Counting a `view` inflated writes_intended and put every file the
+            # agent merely read into files_touched, which is the comparison's
+            # own column. Same distinction tools/edit_file.py draws.
+            if _name != "str_replace_based_edit_tool" or \
+                    arguments.get("command") in WRITING_EDIT_COMMANDS:
+                intended.append({"tool": _name, "arguments": arguments})
+            return ToolResult(ok=True, data={
+                "shadow": True,
+                "tool": _name,
+                "intended_args": arguments,
+                "note": "recorded, not executed",
+            })
+
+        out[name] = Tool(name=name, handler=handler, description=tool.description,
+                         input_schema=tool.input_schema, side_effect=True,
+                         anthropic_type=tool.anthropic_type, repeatable=tool.repeatable)
+    return out
 
 
 @dataclass
@@ -94,6 +172,9 @@ def _proposal(outcome: dict, intended: list[dict]) -> dict:
     return {
         "answer": outcome.get("answer") or "",
         "writes_intended": len(intended),
+        "files_touched": sorted({(w["arguments"] or {}).get("path")
+                                 for w in intended
+                                 if (w["arguments"] or {}).get("path")}),
         "tools_used": sorted({e["gen_ai.tool.name"] for e in outcome.get("trace", [])
                               if e.get("event") == "tool_call"}),
         "stopped_on": outcome.get("error"),
@@ -101,16 +182,28 @@ def _proposal(outcome: dict, intended: list[dict]) -> dict:
 
 
 def run_unit(unit: dict, model: str | None = None) -> ShadowRecord:
+    # Imported here, after point_agent_at has run.
     from agent.factory import build_runtime
 
     intended: list[dict] = []
     runtime = build_runtime(model=model)
-    # Reads stay live. Writes are refused by the runtime's own gate, which is
-    # the guard that ships — not a switch this file invents for the occasion.
-    runtime.allow_side_effects = lambda: False
+    # Reads stay live. Writes succeed and do nothing.
+    #
+    # The first version closed the runtime's write gate instead, and the gate
+    # answers DENIED — so the agent tried to edit, was refused, tried again and
+    # stopped on repeated_tool_failure without ever stating what it would have
+    # changed. A refusal is not a shadow: the whole point is a real run that
+    # produces a real proposal, with only the consequence removed. A gate says
+    # no; shadow says done.
+    runtime.allow_side_effects = lambda: True
+    runtime.tools = shadowed_tools(runtime.tools, intended)
+    runtime.max_turns = MAX_TURNS
 
-    prompt = (f"Work this issue from {unit['repo']}.\n\n"
-              f"#{unit['issue']} — {unit['title']}\n\n{unit['body']}")
+    prompt = (f"Work issue #{unit['issue']} on {unit['repo']}.\n\n"
+              f"{unit['title']}\n\n{unit['body']}\n\n"
+              f"You are inside a checkout of that repository. Make the change "
+              f"with the editor, then STOP and state in two or three sentences "
+              f"which files you changed and why. Do not open a pull request.")
     started = time.time()
     try:
         outcome = runtime.run(redact(prompt))
@@ -142,11 +235,30 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=3,
                         help="units to run; the batch is deliberately small, see shadow/README.md")
     parser.add_argument("--model", default=None)
+    parser.add_argument("--workspace", type=Path, default=None,
+                        help="existing checkout to use instead of cloning")
     parser.add_argument("--out", type=Path, default=HERE / "results.jsonl")
     args = parser.parse_args()
 
     units = [json.loads(l) for l in args.traffic.read_text(encoding="utf-8").splitlines() if l.strip()]
     units = units[:args.limit]
+    if not units:
+        print(f"no traffic in {args.traffic} — run `make shadow-harvest REPO=...`")
+        return 1
+
+    # One repository per batch: the agent's target is frozen at import, so a
+    # mixed batch would run every unit against whichever repo came first.
+    repos = {u["repo"] for u in units}
+    if len(repos) > 1:
+        print(f"this batch spans {sorted(repos)} — run one repository at a time")
+        return 1
+
+    repo = repos.pop()
+    target = point_agent_at(repo, args.workspace)
+    if not ensure_clone(repo, target):
+        print(f"could not clone {repo} into {target}")
+        return 1
+    print(f"agent pointed at {repo} in {target}\n")
 
     records = []
     for i, unit in enumerate(units, 1):

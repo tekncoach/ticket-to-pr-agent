@@ -32,34 +32,50 @@ shadow run exists to ask.
 
 ## What the sample batch found
 
-Three units. All three refused, for the same reason, and none attempted a
-write:
+Three units against a real checkout of `encode/httpx`, with `TARGET_REPO` and
+`TARGET_WORKSPACE` pointed at the repository the traffic came from.
 
-> *"The system is configured to work with the liberty-rider-myroadtrips
-> repository. I cannot work on issues from external repositories."*
+| unit | baseline | agent touched | stopped on |
+|---|---|---|---|
+| #3349 | *Docs minor fix* — 1 file | `httpx/_client.py` | `duplicate_tool_call` |
+| #3111 | *Use more permissible types in ASGIApp* — 2 files | `httpx/_transports/asgi.py` | `repeated_tool_failure` |
+| #2810 | *ASGI raw_path should not include the query* — 3 files | — | `allowlist_workaround` |
 
-That is correct behaviour, and it is the finding. **This agent is
-single-target by construction** — one `TARGET_REPO`, one checked-out
-workspace, one token, a limitation `README.md` already names — so traffic from
-a foreign repository measures the boundary, not the work. The pairwise records
-are legible and true, and what they say is *"refused, correctly, every time"*.
+**Two of three located the same file the merged pull request changed**, in a
+codebase neither the agent nor its corpus has ever seen. That is the encouraging
+half.
 
-Running fifty more of them would produce fifty more refusals.
+**All three died on this project's own guards**, not on the work: an identical
+bash call repeated, a rejected shell operator, and the cross-tool guard cutting
+`cd` followed by `cat`. None of them reached a stated proposal.
+
+That is the finding, and it is the same one the first completed ticket produced
+— six of its eight blockers were our guards rather than the model. A shadow run
+against unfamiliar traffic surfaces it again, immediately, and at a scale where
+it is obviously systematic rather than anecdotal. The guards are individually
+defensible; together, in a repository whose layout the agent has to discover,
+they are the binding constraint.
 
 ## Why the batch stops at three
 
-Three reasons, in the order they actually decide it.
+**It already answered the question.** Three units produced a consistent,
+specific finding. Fifty more would produce it fifty more times, which is
+spending to restate something rather than to learn it.
 
-**The comparison has nothing to compare.** A baseline is a real fix; the
-proposal is a refusal. The pair is honest and it is the same pair sixty times.
-
-**The agent has no parallel system to shadow.** Shadow mode's value is running
-beside something already serving traffic, and there is nothing here doing that
-job. `Baseline.unavailable()` exists for exactly this and says so rather than
+**And the agent has no parallel system to shadow.** Shadow mode's value is
+running beside something already serving traffic; nothing here does that job.
+`Baseline.unavailable()` exists for exactly this and says so rather than
 inventing one.
 
-**And the cost is real but last.** It is the weakest of the three, and putting
-it first would be the wrong argument.
+Cost is real and comes last, because putting it first would be the weaker
+argument.
+
+## What the run cannot say
+
+`run_tests` needs the target's own interpreter and a clone has none, so nothing
+here verifies a proposal compiles or passes. Shadow compares intentions, and
+these are intentions. Reading the file list as evidence of a working fix would
+be the claim this whole page is built to avoid.
 
 ## What was built rather than argued
 

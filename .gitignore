@@ -55,3 +55,4 @@ tmp/
 # The demo recording is committed on purpose — it is the deliverable.
 !docs/demo/
 .ci-run/
+shadow/clones/

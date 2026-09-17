@@ -113,3 +113,37 @@ def test_bots_are_not_traffic():
     from shadow.harvest import BOTS
 
     assert "dependabot" in BOTS
+
+
+def test_a_write_returns_a_receipt_rather_than_a_refusal():
+    # F40: the runner closed the runtime's write gate instead of making writes
+    # no-ops. The gate answers DENIED, so the agent tried, was refused, tried
+    # again and stopped on repeated_tool_failure without ever saying what it
+    # would have changed. A gate says no; shadow says done.
+    from agent.factory import TOOLS
+    from shadow.runner import shadowed_tools
+
+    recorded: list[dict] = []
+    tools = shadowed_tools(TOOLS, recorded)
+    result = tools["str_replace_based_edit_tool"].handler(
+        {"command": "str_replace", "path": "httpx/_client.py",
+         "old_str": "a", "new_str": "b"})
+
+    assert result.ok, "a shadow write succeeds; only the consequence is removed"
+    assert result.data["shadow"] is True
+    assert result.data["intended_args"]["path"] == "httpx/_client.py"
+    assert recorded and recorded[0]["arguments"]["new_str"] == "b"
+    assert tools["open_pr"].side_effect is True, "the runtime's accounting is unchanged"
+
+
+def test_viewing_a_file_is_not_recorded_as_a_write():
+    # The editor is one tool with several commands. Counting a view inflated
+    # writes_intended and put every file merely read into files_touched, which
+    # is the comparison's own column.
+    from agent.factory import TOOLS
+    from shadow.runner import shadowed_tools
+
+    recorded: list[dict] = []
+    tools = shadowed_tools(TOOLS, recorded)
+    tools["str_replace_based_edit_tool"].handler({"command": "view", "path": "httpx/_client.py"})
+    assert recorded == []
