@@ -9,10 +9,45 @@ def redact(s: str) -> str:
     return EMAIL.sub("[EMAIL]", s)
 
 @dataclass
+class Baseline:
+    """What the current system actually did, for the same input.
+
+    The half of a pairwise record that is not ours, and the one the whole day
+    turns on: without it a shadow run is just a run. Four fields, because a
+    comparison needs all four to mean anything.
+
+    `source` says where the answer came from, and it is load-bearing rather
+    than descriptive — a baseline taken from our own agent on an earlier
+    revision is a different claim from one a human wrote, and reading a number
+    without knowing which is how a comparison flatters itself.
+
+    `action` is what was done in one line. `artifact` is the evidence — a diff,
+    a comment body, a URL — so a disagreement can be read rather than trusted.
+    `at` is when, because a baseline drifts: the human answer to a ticket in
+    August is not the answer the same team would give today.
+    """
+    source: str          # "human-commit" | "human-comment" | "agent-revision:<sha>" | "none"
+    action: str
+    artifact: str | None = None
+    at: str | None = None
+
+    @classmethod
+    def unavailable(cls, why: str) -> "Baseline":
+        """No baseline for this input, said out loud.
+
+        Not an empty dict: a record whose baseline is silently blank reads as
+        agreement with nothing, and averages into the comparison as though it
+        were a measurement. Same rule as the eval metrics — a value that could
+        not be computed is named, never defaulted.
+        """
+        return cls(source="none", action=why)
+
+
+@dataclass
 class ShadowRecord:
     request_id: str
     input: str
-    baseline: dict
+    baseline: Baseline
     agent_proposal: dict
     agent_trace: list
     would_write: bool
