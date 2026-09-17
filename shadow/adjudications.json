@@ -1,0 +1,23 @@
+{
+  "encode-httpx-2715": {
+    "call": "half-the-fix",
+    "why": "Issue asks for socket_options on HTTPTransport. The agent edited httpx/_transports/default.py, which is where the parameter lives, and its trace shows it adding it to HTTPTransport.__init__. The two files it missed are CHANGELOG.md (excluded as noise anyway) and pyproject.toml, which the pull request touched for the release, not for the feature.",
+    "hit": [
+      "httpx/_transports/default.py"
+    ],
+    "missed": [
+      "pyproject.toml"
+    ]
+  },
+  "encode-httpx-2443": {
+    "call": "half-the-fix",
+    "why": "Issue asks for httpcore>=0.16.0 support. The agent moved the constraint in pyproject.toml from >=0.15.0,<0.16.0 to >=0.16.0,<0.17.0 — the substantive change. It missed setup.py, which declared the same dependency twice in that era, and __version__.py, which is the release bump. Called half rather than whole because a fix landing in one of two dependency files is a fix that does not ship.",
+    "hit": [
+      "pyproject.toml"
+    ],
+    "missed": [
+      "setup.py",
+      "httpx/__version__.py"
+    ]
+  }
+}

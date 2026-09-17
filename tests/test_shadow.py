@@ -5,6 +5,7 @@ consequence is removed, redaction happens before anything reaches disk, and
 our own flag is never the proof that nothing was written.
 """
 import json
+from pathlib import Path
 
 import pytest
 
@@ -389,3 +390,57 @@ def test_the_queue_keeps_a_call_already_made_and_only_adds_new_partials():
     fresh = adjudication_queue(rows, {})
     assert fresh[ID]["call"] is None
     assert fresh[ID]["missed"] == ["tests/test_asgi.py"]
+
+
+# --- the tree the agent was reading ----------------------------------------
+
+def test_a_unit_run_against_the_wrong_tree_is_not_scored():
+    # The clone sat on current main while the traffic was historical, so the
+    # agent was asked for changes already present in the file it was reading.
+    # On encode-httpx-2715 it said so, correctly — and the comparator scored it
+    # as half a hit because it had touched the right file. Both "it found the
+    # place" and "it found nothing to do" mean something else on the wrong
+    # tree, so neither is counted.
+    from shadow.diff import classify, summarise
+
+    record = _record(["httpx/_client.py"], ["httpx/_client.py"])
+    record["tree_error"] = "could not fetch d0e29b50: no such object"
+    assert classify(record)["verdict"] == "wrong-tree"
+
+    s = summarise([record])
+    assert s["file_agreement"]["finished"] == 0
+    assert s["completion_rate"] is None
+    # Named rather than dropped: a unit excluded in silence is a unit the
+    # reader assumes was counted.
+    assert s["wrong_tree"] == ["encode-httpx-1"]
+
+
+def test_a_unit_at_its_own_base_commit_is_scored_normally():
+    from shadow.diff import classify
+
+    record = _record(["httpx/_client.py"], ["httpx/_client.py"])
+    record["tree_error"] = None
+    assert classify(record)["verdict"] == "agreed"
+
+
+def test_checkout_base_refuses_rather_than_running_on_whatever_is_there():
+    # The failure mode this replaces is silence: a checkout that did not
+    # happen leaves the previous unit's tree in place and the batch reads as
+    # if every unit had its own.
+    from shadow.runner import checkout_base
+
+    assert checkout_base(Path("/nonexistent"), "") == "no base_sha in the traffic record"
+
+
+@pytest.mark.parametrize("attempt", [
+    # F46. Read-side plumbing, not a write path — a different mode from F43,
+    # and the larger of the two at n=15. Straight out of the traces: the agent
+    # reaches for these to search a codebase it has to discover.
+    "grep -rl asgi httpx | xargs wc -l",
+    "echo httpx/_transports/asgi.py",
+    "python3 -c \"import ast\"",
+])
+def test_f46_ordinary_shell_plumbing_is_not_on_the_allowlist(tmp_path, attempt):
+    result = _bash(tmp_path, attempt)
+    assert not result.ok, f"{attempt!r} is now allowed — say so in F46 or revert"
+    assert result.error_code.startswith("denied:")

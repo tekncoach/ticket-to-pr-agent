@@ -1,43 +1,47 @@
 {
-  "units": 3,
+  "run_at": "20260917T221406Z",
+  "units": 15,
+  "wrong_tree": [],
   "file_agreement": {
-    "of_finished": 0.0,
-    "exact": 0.0,
-    "finished": 1,
+    "of_finished": 0.75,
+    "exact": 0.25,
+    "finished": 4,
     "partials_awaiting_adjudication": []
   },
-  "completion_rate": 0.333,
+  "completion_rate": 0.267,
   "stopped_on": {
-    "duplicate_tool_call": 1,
-    "max_turns": 1
+    "allowlist_workaround": 4,
+    "duplicate_tool_call": 4,
+    "max_turns": 2,
+    "repeated_tool_failure": 1
   },
   "latency_ms": {
-    "median": 28907.9,
-    "max": 68934.3
+    "median": 32909.4,
+    "max": 50255.0
   },
-  "tokens_per_unit": 10127.3,
+  "tokens_per_unit": 9468.6,
   "cost_usd_per_unit": null,
   "disagreements": [
     {
       "id": "encode-httpx-3349",
-      "verdict": "disagreed",
+      "verdict": "incomplete",
       "hit": [],
       "missed": [
         "docs/advanced/transports.md"
       ],
       "extra": [],
-      "stopped_on": null,
+      "stopped_on": "allowlist_workaround",
       "baseline_action": "Docs minor fix"
     },
     {
       "id": "encode-httpx-3111",
       "verdict": "incomplete",
-      "hit": [
+      "hit": [],
+      "missed": [
         "httpx/_transports/asgi.py"
       ],
-      "missed": [],
       "extra": [],
-      "stopped_on": "duplicate_tool_call",
+      "stopped_on": "allowlist_workaround",
       "baseline_action": "Use more permissible types in ASGIApp "
     },
     {
@@ -48,32 +52,59 @@
         "httpx/_transports/asgi.py",
         "tests/test_asgi.py"
       ],
-      "extra": [],
+      "extra": [
+        "_urls.py"
+      ],
       "stopped_on": "max_turns",
       "baseline_action": "Ensure that ASGI 'raw_path' does not include query component of URL."
+    },
+    {
+      "id": "encode-httpx-1434",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_config.py",
+        "httpx/_transports/default.py"
+      ],
+      "extra": [],
+      "stopped_on": "allowlist_workaround",
+      "baseline_action": "HTTPS proxies support"
+    },
+    {
+      "id": "encode-httpx-2794",
+      "verdict": "incomplete",
+      "hit": [
+        "httpx/_types.py"
+      ],
+      "missed": [
+        "pyproject.toml"
+      ],
+      "extra": [],
+      "stopped_on": "duplicate_tool_call",
+      "baseline_action": "Change the type of `Extensions` from `Mapping` to `MutableMapping`."
     }
   ],
   "rows": [
     {
       "id": "encode-httpx-3349",
-      "verdict": "disagreed",
+      "verdict": "incomplete",
       "hit": [],
       "missed": [
         "docs/advanced/transports.md"
       ],
       "extra": [],
-      "stopped_on": null,
+      "stopped_on": "allowlist_workaround",
       "baseline_action": "Docs minor fix"
     },
     {
       "id": "encode-httpx-3111",
       "verdict": "incomplete",
-      "hit": [
+      "hit": [],
+      "missed": [
         "httpx/_transports/asgi.py"
       ],
-      "missed": [],
       "extra": [],
-      "stopped_on": "duplicate_tool_call",
+      "stopped_on": "allowlist_workaround",
       "baseline_action": "Use more permissible types in ASGIApp "
     },
     {
@@ -84,9 +115,163 @@
         "httpx/_transports/asgi.py",
         "tests/test_asgi.py"
       ],
-      "extra": [],
+      "extra": [
+        "_urls.py"
+      ],
       "stopped_on": "max_turns",
       "baseline_action": "Ensure that ASGI 'raw_path' does not include query component of URL."
+    },
+    {
+      "id": "encode-httpx-1434",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_config.py",
+        "httpx/_transports/default.py"
+      ],
+      "extra": [],
+      "stopped_on": "allowlist_workaround",
+      "baseline_action": "HTTPS proxies support"
+    },
+    {
+      "id": "encode-httpx-2794",
+      "verdict": "incomplete",
+      "hit": [
+        "httpx/_types.py"
+      ],
+      "missed": [
+        "pyproject.toml"
+      ],
+      "extra": [],
+      "stopped_on": "duplicate_tool_call",
+      "baseline_action": "Change the type of `Extensions` from `Mapping` to `MutableMapping`."
+    },
+    {
+      "id": "encode-httpx-2715",
+      "verdict": "partial",
+      "hit": [
+        "httpx/_transports/default.py"
+      ],
+      "missed": [
+        "pyproject.toml"
+      ],
+      "extra": [],
+      "stopped_on": null,
+      "baseline_action": "Add `socket_options` argument to `httpx.HTTPTransport` class"
+    },
+    {
+      "id": "encode-httpx-2694",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_urlparse.py",
+        "tests/test_urlparse.py"
+      ],
+      "extra": [],
+      "stopped_on": "allowlist_workaround",
+      "baseline_action": "Fix for gen-delims escaping behaviour in path/query/fragment"
+    },
+    {
+      "id": "encode-httpx-1278",
+      "verdict": "disagreed",
+      "hit": [],
+      "missed": [
+        "docs/third_party_packages.md"
+      ],
+      "extra": [
+        "_models.py"
+      ],
+      "stopped_on": null,
+      "baseline_action": "Add httpx-sse to Third Party Packages"
+    },
+    {
+      "id": "encode-httpx-2670",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_urlparse.py",
+        "tests/test_urlparse.py"
+      ],
+      "extra": [],
+      "stopped_on": "repeated_tool_failure",
+      "baseline_action": "Fix optional percent encoding behaviour."
+    },
+    {
+      "id": "encode-httpx-2666",
+      "verdict": "agreed",
+      "hit": [
+        "httpx/_auth.py"
+      ],
+      "missed": [],
+      "extra": [],
+      "stopped_on": null,
+      "baseline_action": "Fixes #2666: None is the default value of file for httpx.NetRCAuth"
+    },
+    {
+      "id": "encode-httpx-2660",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_utils.py",
+        "tests/test_utils.py"
+      ],
+      "extra": [],
+      "stopped_on": "duplicate_tool_call",
+      "baseline_action": "fix: NO_PROXY should support IPv4, IPv6 and localhost"
+    },
+    {
+      "id": "encode-httpx-746",
+      "verdict": "incomplete",
+      "hit": [
+        "httpx/_utils.py"
+      ],
+      "missed": [
+        "tests/models/test_queryparams.py"
+      ],
+      "extra": [
+        "_urls.py"
+      ],
+      "stopped_on": "duplicate_tool_call",
+      "baseline_action": "Raise `TypeError` on invalid query params."
+    },
+    {
+      "id": "encode-httpx-2491",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_content.py",
+        "tests/test_content.py"
+      ],
+      "extra": [],
+      "stopped_on": "duplicate_tool_call",
+      "baseline_action": "Raise TypeError if content is passed a 'dict' instance."
+    },
+    {
+      "id": "encode-httpx-2462",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_types.py",
+        "httpx/_urls.py",
+        "tests/models/test_url.py"
+      ],
+      "extra": [],
+      "stopped_on": "max_turns",
+      "baseline_action": "Add back in URL.raw with NamedTuple"
+    },
+    {
+      "id": "encode-httpx-2443",
+      "verdict": "partial",
+      "hit": [
+        "pyproject.toml"
+      ],
+      "missed": [
+        "httpx/__version__.py",
+        "setup.py"
+      ],
+      "extra": [],
+      "stopped_on": null,
+      "baseline_action": "Version 0.23.1"
     }
   ]
 }

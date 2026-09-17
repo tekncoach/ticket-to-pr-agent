@@ -107,7 +107,12 @@ def classify(record: dict) -> dict:
     # answer reported all three guard-killed units as finished and the
     # guardrail read 1.0. The guardrail existing and the guardrail working are
     # different claims.
-    if proposal.get("stopped_on"):
+    # A unit run against the wrong tree cannot be scored at all: the agent was
+    # reading a codebase where the ticket had already been fixed, so both
+    # "it found the file" and "it found nothing to do" mean something else.
+    if record.get("tree_error"):
+        verdict = "wrong-tree"
+    elif proposal.get("stopped_on"):
         verdict = "incomplete"
     elif not wanted:
         verdict = "baseline-unavailable"
@@ -140,8 +145,9 @@ def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
 
     pending = [r["id"] for r in rows if r["verdict"] == "partial"
                and r["id"] not in adjudications]
-    comparable = [r for r in rows if r["verdict"] not in ("baseline-unavailable",)]
-    finished = [r for r in rows if r["verdict"] not in ("incomplete", "baseline-unavailable")]
+    comparable = [r for r in rows if r["verdict"] not in ("baseline-unavailable", "wrong-tree")]
+    finished = [r for r in rows
+                if r["verdict"] not in ("incomplete", "baseline-unavailable", "wrong-tree")]
 
     def share(predicate, of):
         return round(sum(1 for r in of if predicate(r)) / len(of), 3) if of else None
@@ -153,6 +159,9 @@ def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
         # Stamped so the promotion path can name the run a row came from.
         "run_at": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
         "units": len(records),
+        # Named rather than dropped: a unit excluded in silence is a unit the
+        # reader assumes was counted.
+        "wrong_tree": [r["id"] for r in rows if r["verdict"] == "wrong-tree"],
         # The primary metric. Reported over units that finished, because a
         # unit that never stated a proposal did not agree or disagree.
         "file_agreement": {

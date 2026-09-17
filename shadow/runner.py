@@ -66,6 +66,40 @@ def ensure_clone(repo: str, target: Path) -> bool:
         capture_output=True, text=True, timeout=300)
     return done.returncode == 0
 
+
+def _git(target: Path, *args: str, timeout: int = 120) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", "-C", str(target), *args],
+                          capture_output=True, text=True, timeout=timeout)
+
+
+def checkout_base(target: Path, base_sha: str) -> str | None:
+    """Put the tree where it was the moment before the fix landed.
+
+    Without this the agent reads current main while working a ticket from
+    2022, so it is asked for a change that is already there — and on #2715 it
+    said exactly that, correctly, and the comparator scored it as half a hit
+    because it had touched the right file. A baseline you cannot be at is not
+    a baseline; this is the difference between replaying a ticket and quizzing
+    the agent about a codebase that has already moved past it.
+
+    Returns None on success, or why it could not, because a unit run against
+    the wrong tree must be recorded as such rather than silently mixed in.
+    """
+    if not base_sha:
+        return "no base_sha in the traffic record"
+    # The clone is shallow, so an old commit is usually not there yet.
+    if _git(target, "cat-file", "-e", f"{base_sha}^{{commit}}").returncode != 0:
+        fetched = _git(target, "fetch", "--depth", "1", "origin", base_sha, timeout=300)
+        if fetched.returncode != 0:
+            return f"could not fetch {base_sha[:8]}: {fetched.stderr.strip()[:120]}"
+    out = _git(target, "checkout", "--force", "--detach", base_sha)
+    if out.returncode != 0:
+        return f"could not check out {base_sha[:8]}: {out.stderr.strip()[:120]}"
+    # The previous unit's shadow edits are no-ops, but a real clean keeps the
+    # tree honest if that ever stops being true.
+    _git(target, "clean", "-fd")
+    return None
+
 # Redaction beyond secrets: an issue body is written by a member of the public.
 import re
 
@@ -161,6 +195,11 @@ class ShadowRecord:
     output_tokens: int
     cached_tokens: int
     error: str | None = None
+    # Which tree the agent actually read. None means the unit ran against the
+    # base commit of its own pull request, which is the only tree where the
+    # ticket is still open; a string says why it did not, and the comparator
+    # refuses to score those.
+    tree_error: str | None = None
 
 
 def _proposal(outcome: dict, intended: list[dict]) -> dict:
@@ -293,8 +332,18 @@ def main() -> int:
 
     records = []
     for i, unit in enumerate(units, 1):
-        print(f"  {i}/{len(units)}  {unit['request_id']}", flush=True)
-        records.append(run_unit(unit, args.model))
+        # Each unit at its own base commit: the tree as it was the moment
+        # before the fix landed. Skipping this asks the agent for a change
+        # that is already in the file it is reading.
+        tree_error = checkout_base(target, unit.get("base_sha", ""))
+        note = "" if not tree_error else f"   [{tree_error}]"
+        print(f"  {i}/{len(units)}  {unit['request_id']}{note}", flush=True)
+        record = run_unit(unit, args.model)
+        record.tree_error = tree_error
+        records.append(record)
+
+    # Leave the clone somewhere sane rather than on the last unit's base.
+    _git(target, "checkout", "--force", "-")
 
     # Redacted already, at build time. Written once, here.
     args.out.write_text(

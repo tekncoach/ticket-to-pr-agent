@@ -7,7 +7,7 @@ disk, and zero writes proved by the integration rather than by us.
 ```
 make shadow-harvest REPO=encode/httpx   # traffic: real issue -> merged-PR pairs
 make shadow-audit-before ISSUES=13,14,16 # count what a write would move
-make shadow-run LIMIT=3                  # the batch
+make shadow-run LIMIT=15                 # the batch, each unit at its base commit
 make shadow-audit-after                  # ask GitHub whether anything moved
 ```
 
@@ -67,88 +67,102 @@ happens to overlap — and nothing deterministic separates them. `shadow/diff.py
 writes each one to `adjudications.json` with what it hit and what it missed and
 a blank call; until the call is `half-the-fix` it does not count as agreement,
 and the summary prints how many are waiting so the number is never read as
-settled. At n=3 this changes nothing. At n=60 it is the difference between a
-metric and a flattering one.
+settled. Two of the four finished units in the batch below are partials, and
+both were called by hand with the reason written down — without that they
+would have counted the same as the one exact hit.
 
 **Guardrail — completion rate.** How many units reached a stated proposal at
-all. High agreement over the three units that finished out of sixty that did
+all. High agreement over the four units that finished out of fifteen that did
 not is a number that flatters itself, so the two travel together and neither is
 reported alone.
 
-## What the sample batch found
+## What the batch found
 
-Three units against a real checkout of `encode/httpx`, with `TARGET_REPO` and
-`TARGET_WORKSPACE` pointed at the repository the traffic came from.
+Fifteen units against `encode/httpx`, each at the parent commit of the pull
+request that resolved it.
 
 ```
-3 units, 1 reached a proposal
-  file agreement   0.0  (exact 0.0)
-  completion rate  0.333   <- the guardrail
-  latency          median 28908ms, max 68934ms
-  stopped on duplicate_tool_call: 1, max_turns: 1
+15 units, 4 reached a proposal
+  file agreement   0.75  (exact 0.25)
+  completion rate  0.267   <- the guardrail
+  latency          median 32909ms, max 50255ms
+  stopped on allowlist_workaround: 4, duplicate_tool_call: 4,
+             max_turns: 2, repeated_tool_failure: 1
 ```
 
-| unit | baseline | agent touched | verdict |
-|---|---|---|---|
-| #3349 | `docs/advanced/transports.md` | `httpx/_client.py` | disagreed |
-| #3111 | `httpx/_transports/asgi.py` | `httpx/_transports/asgi.py` | incomplete — `max_turns` |
-| #2810 | `httpx/_transports/asgi.py`, `tests/test_asgi.py` | — | incomplete — `duplicate_tool_call` |
+Agreement counts one exact hit (`#2666`, `httpx/_auth.py` — the missing
+`file=None` default on `NetRCAuth`) and two partials adjudicated
+`half-the-fix`: `#2715` put `socket_options` in
+`httpx/_transports/default.py`, and `#2443` moved the `httpcore` constraint in
+`pyproject.toml`. The fourth finished unit, `#1278`, implemented server-sent
+events in `httpx/_models.py` when the merged pull request resolved the issue by
+documenting an existing third-party package — it built the feature rather than
+finding that someone else had (`F48`, recorded and not fixed: choosing between
+building and pointing at prior art is a judgement this metric cannot see).
 
-**The first batch completed nothing, and a third of that was our own prompt.**
-It said *"you are inside a checkout of that repository"* without naming the
-path, so the agent guessed `/repo/httpx/...` and the workspace guard refused it
-— in all three units, before anything else went wrong. `agent/tickets.py`'s
-`task_prompt` has named the workspace since day 4; this prompt was written
-separately and did not. Naming it, with no other change, moved completion from
-0.0 to 0.333 on the same three units. That is `F42`, and it is ours.
+Both partials are written up in `adjudications.json` with the reason, because
+"found half the fix" and "touched a file that happens to overlap" are the same
+word until someone says which.
 
-The other two stop reasons are the agent's, and both stay open. With no write
-path in bash it improvises scripting to make an edit — heredocs, `python -c` —
-and retries the same shape rather than reaching for the editor tool (`F43`).
-And `run_tests` cannot work on a clone with no virtualenv, so it tries pytest
-directly (`F44`); on foreign traffic there is no green suite to converge to at
-all, which is a scope limit of this agent's loop, not a bug in it.
+### The batch before this one was measuring the wrong thing
 
-**Agreement is still 0.0, and the unit that finished is the reason.** `#3349`
-went to `httpx/_client.py` for a fix that lived in `docs/advanced/transports.md`.
-The one unit that had the right file — `#3111`, on `httpx/_transports/asgi.py` —
-ran out of turns before stating a proposal, so it counts as incomplete and not
-as a hit. Reading it as "one of three found the right place" would be counting
-a run that never finished; the guardrail exists to stop exactly that.
+The first fifteen units ran against current `main` while the traffic is
+historical — so the agent was asked for changes **already present in the file
+it was reading**. It noticed before we did. On `#2715` it said outright that
+`socket_options` *"IS already implemented … the actual functionality was
+already in place"*, which was true, and the comparator scored it as half a hit
+for touching the right file. `base_sha` had been in every traffic record since
+the first harvest and was never used.
 
-That correction is the argument for building the comparator. Read by eye, the
-first batch looked like two hits out of three, and it was written up that way.
-The comparator says one, and it is right — which is exactly the gap between "I
-have logs" and "here is what the run told me".
+`checkout_base()` now puts the tree at the pull request's parent commit before
+each unit. A unit that cannot get there carries `tree_error` and the comparator
+gives it the `wrong-tree` verdict instead of a score — because on the wrong
+tree, "it found the place" and "it found nothing to do" both mean something
+else. That is `F45`, and it is ours.
 
-## Why the batch stops at three
+### What n=15 says about the two modes n=3 guessed at
+
+The three-unit batch was used to claim both open modes were structural. Fifteen
+units on correct trees say otherwise, and the correction runs in both
+directions:
+
+- **`F44` was not seen once.** `run_tests` failing on a clone with no
+  virtualenv looked like a mode at n=3 and is closer to an incident.
+- **`F43` is real and small** — the agent improvising a shell to write, 2 units
+  and 5 refusals.
+- **`F46` is new and larger**: 4 units stopped reaching for ordinary plumbing
+  the allowlist does not carry — `xargs`, `echo`, `python3`. That is a
+  different mode from improvising a write path; these are read-side commands on
+  a codebase the agent has to discover, and no three-unit batch could have
+  shown it.
+- **`F47` is the other new one**: 4 of the 11 units that did not finish hit no
+  guard at all — two exhausted their turns, two repeated a call they had
+  already made, with nothing refusing them.
+
+So the guards are involved in 7 of 11 incompletions, which supports `F39`'s
+umbrella claim and not the specific two modes named under it. The n=3
+inference was wrong in the direction a reader would predict, and it is left
+written down above rather than quietly replaced.
+
+## Why the batch stops at fifteen
 
 The full corpus is 60 units and the command is `make shadow-run LIMIT=60`.
-Running it costs, measured from this batch's own usage rather than estimated:
-6.5k uncached input, 199k cache-read and 3.6k output tokens per unit, which on
-`claude-haiku-4-5` is **about $0.045 a unit, roughly $2.70 for all sixty**, and
-between thirty and seventy minutes of wall clock at the latencies above.
+Measured from these runs rather than estimated — 7k uncached input, ~175k
+cache-read and 3.5k output tokens per unit — that is **about $0.045 a unit,
+roughly $2.70 for all sixty**, and between thirty and seventy minutes of wall
+clock.
 
-So cost is not the reason, and claiming it was would be the dishonest version
-of this paragraph.
+Cost is not the reason. Fifteen was chosen to test a claim three units could
+not support, and it did: it overturned `F44`, sized `F43`, and surfaced two
+modes that were not visible at all. What sixty would buy now is a readable
+agreement rate — at 4 finished units, 0.75 rests on three cases and should be
+read as "the agent lands on the right file when it gets that far", not as a
+rate. Completion at 0.267 is the number to move, and moving it is a code
+change rather than a sample-size change.
 
-**The honest version is that three units do not yet support the claim they were
-used to make.** An earlier draft of this section said both open modes are
-structural and reproduce on every unit. They were each seen once. One
-shell-improvisation stop and one test-oracle stop is a reason to expect a
-pattern, not evidence of one, and a third mode that neither `F43` nor `F44`
-predicts would not have had room to show up. `make shadow-run LIMIT=15` is the
-slice that tests it — large enough to tell a dominant mode from a coincidence,
-about $0.70, and it is the next thing this page should be updated with.
-
-What sixty units still would not buy is a readable agreement number. Agreement
-is only meaningful once completion is high enough to have a denominator; at
-0.333 it is not, and raising completion is a code change rather than a
-sample-size change.
-
-**And the agent has no parallel system to shadow.** Shadow mode's value is
-running beside something already serving traffic; nothing here does that job.
-`Baseline.unavailable()` exists for exactly this and says so rather than
+**And the agent still has no parallel system to shadow.** Shadow mode's value
+is running beside something already serving traffic; nothing here does that
+job. `Baseline.unavailable()` exists for exactly this and says so rather than
 inventing one.
 
 ## What the run cannot say
