@@ -2,7 +2,7 @@
 # shadow audit can ask GitHub about it without loading the agent.
 TARGET_REPO ?= tekncoach/liberty-rider-myroadtrips
 
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit shadow-harvest shadow-run shadow-audit-before shadow-audit-after judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit shadow-harvest shadow-run shadow-audit-before shadow-audit-after shadow-diff judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -133,6 +133,12 @@ shadow-harvest:
 shadow-run:
 	uv run --env-file .env python -m shadow.runner $(if $(LIMIT),--limit $(LIMIT),) \
 	  $(if $(MODEL),--model $(MODEL),)
+
+# Turn the pairwise log into a verdict: file agreement against the merged pull
+# request, with the completion rate beside it because agreement over the few
+# units that finished is a number that flatters itself.
+shadow-diff:
+	uv run python -m shadow.diff
 
 # Proof of zero writes, from the integration rather than from our own flag.
 # Take the snapshot BEFORE the batch; compare after.

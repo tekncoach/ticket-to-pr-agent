@@ -30,6 +30,41 @@ Nothing in `harvest.py` is specific to any repository — `--repo` takes any of
 them. A shadow runner coupled to its own project cannot answer the question a
 shadow run exists to ask.
 
+## What this run does and does not validate
+
+The traffic is `encode/httpx`, not the agent's own target. That substitution
+buys real issues written before anyone knew the answer, and it costs something
+that has to be said rather than implied:
+
+**this validates that the agent can do coding work on an unfamiliar codebase.
+It says nothing about whether the agent fits this customer's ticket
+distribution.** A shadow run's usual purpose is the second, and it needs a
+target with traffic of its own.
+
+The baseline carries the same caveat. A merged pull request is what an
+engineer did, not what a production system currently does — `source` records
+which, because reading a number without knowing that is how a comparison
+flatters itself.
+
+## The verdict, and how it is computed
+
+`make shadow-diff` reads the pairwise log and answers the question the log
+alone cannot.
+
+**Primary metric — file agreement.** Of the files the merged pull request
+changed, how many did the agent also touch. Deliberately narrow and narrow in a
+checkable direction: finding the right place is necessary for a correct change
+and nowhere near sufficient, so this is a floor on competence, never a claim of
+correctness. Changelog entries are excluded — every pull request has one and it
+says nothing about where the work is. Comparing the edits themselves needs a
+judge, and this project does not hand its judge anything it can decide
+deterministically.
+
+**Guardrail — completion rate.** How many units reached a stated proposal at
+all. High agreement over the three units that finished out of sixty that did
+not is a number that flatters itself, so the two travel together and neither is
+reported alone.
+
 ## What the sample batch found
 
 Three units against a real checkout of `encode/httpx`, with `TARGET_REPO` and
@@ -41,13 +76,28 @@ Three units against a real checkout of `encode/httpx`, with `TARGET_REPO` and
 | #3111 | *Use more permissible types in ASGIApp* — 2 files | `httpx/_transports/asgi.py` | `repeated_tool_failure` |
 | #2810 | *ASGI raw_path should not include the query* — 3 files | — | `allowlist_workaround` |
 
-**Two of three located the same file the merged pull request changed**, in a
-codebase neither the agent nor its corpus has ever seen. That is the encouraging
-half.
+```
+3 units, 0 reached a proposal
+  file agreement   None (no unit finished)
+  completion rate  0.0   <- the guardrail
+  stopped on allowlist_workaround: 1, duplicate_tool_call: 1, repeated_tool_failure: 1
+```
 
-**All three died on this project's own guards**, not on the work: an identical
-bash call repeated, a rejected shell operator, and the cross-tool guard cutting
-`cd` followed by `cat`. None of them reached a stated proposal.
+**One of three had found the right file before it died** — `#3111` touched
+`httpx/_transports/asgi.py`, which is what the merged pull request changed. The
+other two had not: `#3349` went to `_client.py` where the fix was in
+`docs/advanced/transports.md`, and `#2810` touched nothing.
+
+That correction is the argument for building the comparator. Read by eye, this
+looked like two hits out of three, and it was written up that way. The
+comparator says one, and it is right — which is exactly the gap between "I have
+logs" and "here is what the run told me".
+
+**And the completion rate is 0.0.** All three died on this project's own
+guards, not on the work: an identical bash call repeated, a rejected shell
+operator, and the cross-tool guard cutting `cd` followed by `cat`. None reached
+a stated proposal, so the agreement number has no denominator worth quoting and
+the summary says so rather than dividing by what survived.
 
 That is the finding, and it is the same one the first completed ticket produced
 — six of its eight blockers were our guards rather than the model. A shadow run

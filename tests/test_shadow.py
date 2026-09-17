@@ -147,3 +147,81 @@ def test_viewing_a_file_is_not_recorded_as_a_write():
     tools = shadowed_tools(TOOLS, recorded)
     tools["str_replace_based_edit_tool"].handler({"command": "view", "path": "httpx/_client.py"})
     assert recorded == []
+
+
+# --- the comparator ---------------------------------------------------------
+
+def _record(files_touched, baseline_files, stopped_on=None, answer="done"):
+    return {"request_id": "encode-httpx-1", "latency_ms": 100.0,
+            "input_tokens": 10, "output_tokens": 5,
+            "baseline": {"source": "merged-pull-request", "files": baseline_files},
+            "agent_proposal": {"answer": answer, "files_touched": files_touched,
+                               "stopped_on": stopped_on}}
+
+
+def test_an_absolute_path_matches_a_repo_relative_one():
+    # The agent works in absolute paths and the baseline is repo-relative, so
+    # without this nothing ever matches and the metric reads 0.0 forever.
+    from shadow.diff import classify
+
+    row = classify(_record(["/repo/httpx/_transports/asgi.py"],
+                           ["httpx/_transports/asgi.py"]))
+    assert row["verdict"] == "agreed" and row["missed"] == []
+
+
+def test_a_changelog_entry_is_not_evidence_of_finding_the_place():
+    # Every pull request touches one and it says nothing about where the work
+    # is; counting it would inflate agreement on every single unit.
+    from shadow.diff import classify
+
+    row = classify(_record(["/repo/httpx/_transports/asgi.py"],
+                           ["CHANGELOG.md", "httpx/_transports/asgi.py"]))
+    assert row["verdict"] == "agreed"
+
+
+def test_touching_the_wrong_file_is_a_disagreement():
+    from shadow.diff import classify
+
+    row = classify(_record(["/repo/httpx/_client.py"], ["docs/advanced/transports.md"]))
+    assert row["verdict"] == "disagreed"
+    assert row["missed"] == ["docs/advanced/transports.md"]
+
+
+def test_a_run_the_runtime_stopped_did_not_reach_a_proposal():
+    # The stop sentence lives in the answer field, so checking for an empty
+    # answer reported all three guard-killed units as finished and the
+    # guardrail read 1.0. A guardrail existing and a guardrail working are
+    # different claims.
+    from shadow.diff import classify
+
+    row = classify(_record(["/repo/httpx/_transports/asgi.py"],
+                           ["httpx/_transports/asgi.py"],
+                           stopped_on="allowlist_workaround",
+                           answer="Stopping: the allowlist refused cd..."))
+    assert row["verdict"] == "incomplete"
+
+
+def test_agreement_is_not_reported_when_nothing_finished():
+    # Agreement over the units that survived is the number that flatters
+    # itself, which is what the guardrail exists to prevent.
+    from shadow.diff import summarise
+
+    summary = summarise([_record(["/repo/a.py"], ["a.py"], stopped_on="max_turns")])
+    assert summary["file_agreement"]["of_finished"] is None
+    assert summary["completion_rate"] == 0.0
+
+
+def test_a_missing_baseline_is_named_rather_than_counted():
+    from shadow.diff import classify, summarise
+
+    record = _record(["/repo/a.py"], [])
+    assert classify(record)["verdict"] == "baseline-unavailable"
+    assert summarise([record])["completion_rate"] is None
+
+
+def test_cost_stays_none_until_a_price_is_configured():
+    # Same rule as the eval metrics: a hardcoded vendor price goes stale in
+    # silence, and the staleness surfaces as a number nobody can defend.
+    from shadow.diff import summarise
+
+    assert summarise([_record(["/repo/a.py"], ["a.py"])])["cost_usd_per_unit"] is None

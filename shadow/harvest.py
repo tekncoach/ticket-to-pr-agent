@@ -85,6 +85,12 @@ def harvest(repo: str, want: int, max_files: int, max_lines: int) -> list[dict]:
                 # the agent ever sees the input.
                 "baseline": {
                     "source": "merged-pull-request",
+                    # The paths, not just a count. Comparing "1 file" to "1
+                    # file" says nothing; comparing which file says whether the
+                    # agent found the same place.
+                    "files": sorted(f["filename"] for f in
+                                    (gh(f"repos/{repo}/pulls/{item['number']}/files"
+                                        "?per_page=100") or [])),
                     "action": pull["title"],
                     "artifact": (f"PR #{pull['number']}: {changed} file(s), "
                                  f"+{pull.get('additions')}/-{pull.get('deletions')} "

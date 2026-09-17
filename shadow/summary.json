@@ -1,0 +1,96 @@
+{
+  "units": 3,
+  "file_agreement": {
+    "of_finished": null,
+    "exact": null,
+    "finished": 0
+  },
+  "completion_rate": 0.0,
+  "stopped_on": {
+    "allowlist_workaround": 1,
+    "duplicate_tool_call": 1,
+    "repeated_tool_failure": 1
+  },
+  "latency_ms": {
+    "median": 38214.0,
+    "max": 40287.0
+  },
+  "tokens_per_unit": 10009.3,
+  "cost_usd_per_unit": null,
+  "disagreements": [
+    {
+      "id": "encode-httpx-3349",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "docs/advanced/transports.md"
+      ],
+      "extra": [
+        "httpx/_client.py"
+      ],
+      "stopped_on": "duplicate_tool_call",
+      "baseline_action": "Docs minor fix"
+    },
+    {
+      "id": "encode-httpx-3111",
+      "verdict": "incomplete",
+      "hit": [
+        "httpx/_transports/asgi.py"
+      ],
+      "missed": [],
+      "extra": [],
+      "stopped_on": "repeated_tool_failure",
+      "baseline_action": "Use more permissible types in ASGIApp "
+    },
+    {
+      "id": "encode-httpx-2810",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_transports/asgi.py",
+        "tests/test_asgi.py"
+      ],
+      "extra": [],
+      "stopped_on": "allowlist_workaround",
+      "baseline_action": "Ensure that ASGI 'raw_path' does not include query component of URL."
+    }
+  ],
+  "rows": [
+    {
+      "id": "encode-httpx-3349",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "docs/advanced/transports.md"
+      ],
+      "extra": [
+        "httpx/_client.py"
+      ],
+      "stopped_on": "duplicate_tool_call",
+      "baseline_action": "Docs minor fix"
+    },
+    {
+      "id": "encode-httpx-3111",
+      "verdict": "incomplete",
+      "hit": [
+        "httpx/_transports/asgi.py"
+      ],
+      "missed": [],
+      "extra": [],
+      "stopped_on": "repeated_tool_failure",
+      "baseline_action": "Use more permissible types in ASGIApp "
+    },
+    {
+      "id": "encode-httpx-2810",
+      "verdict": "incomplete",
+      "hit": [],
+      "missed": [
+        "httpx/_transports/asgi.py",
+        "tests/test_asgi.py"
+      ],
+      "extra": [],
+      "stopped_on": "allowlist_workaround",
+      "baseline_action": "Ensure that ASGI 'raw_path' does not include query component of URL."
+    }
+  ]
+}
