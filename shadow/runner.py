@@ -181,6 +181,39 @@ def _proposal(outcome: dict, intended: list[dict]) -> dict:
     }
 
 
+def shadow_prompt(unit: dict, workspace) -> str:
+    """What the agent is told on a repository it has never seen.
+
+    It names the workspace. The first version said only "you are inside a
+    checkout", so the agent guessed /repo/... and was refused as escaping the
+    workspace — in all three units of the first batch, before anything else
+    went wrong. agent/tickets.py's own task_prompt has named it since day 4;
+    this prompt was written separately and did not (F42).
+
+    The other two paragraphs answer the other two stop reasons that batch
+    produced: the agent improvised heredocs and `python -c` to write (F43),
+    and tried pytest directly when run_tests failed on a clone with no
+    virtualenv (F44). Naming a constraint is a mitigation, not a fix — both
+    rows stay open.
+    """
+    return (f"Work issue #{unit['issue']} on {unit['repo']}.\n\n"
+            f"{unit['title']}\n\n{unit['body']}\n\n"
+            f"You are inside a checkout of that repository at {workspace}. "
+            f"Every path is relative to its root: `ls`, `cat httpx/_client.py` "
+            f"and `grep -rn x httpx/` work directly. Never write a path "
+            f"starting /repo — it does not exist.\n"
+            f"bash is read-only: grep, cat, find, ls, head, tail, wc, pwd, "
+            f"sed, awk and git, reading only. No redirects, no heredocs, no "
+            f"`python -c`, no `&&` — a single pipe is the one operator that "
+            f"works, and the editor tool is how you change a file.\n"
+            f"run_tests will not work here: this is a clone without its own "
+            f"virtualenv, and a shadow run compares proposals rather than "
+            f"green suites. Do not try to run pytest another way.\n"
+            f"Make the change with the editor, then STOP and state in two or "
+            f"three sentences which files you changed and why. Do not open a "
+            f"pull request.")
+
+
 def run_unit(unit: dict, model: str | None = None) -> ShadowRecord:
     # Imported here, after point_agent_at has run.
     from agent.factory import build_runtime
@@ -199,11 +232,9 @@ def run_unit(unit: dict, model: str | None = None) -> ShadowRecord:
     runtime.tools = shadowed_tools(runtime.tools, intended)
     runtime.max_turns = MAX_TURNS
 
-    prompt = (f"Work issue #{unit['issue']} on {unit['repo']}.\n\n"
-              f"{unit['title']}\n\n{unit['body']}\n\n"
-              f"You are inside a checkout of that repository. Make the change "
-              f"with the editor, then STOP and state in two or three sentences "
-              f"which files you changed and why. Do not open a pull request.")
+    from agent.config import WORKSPACE
+
+    prompt = shadow_prompt(unit, WORKSPACE)
     started = time.time()
     try:
         outcome = runtime.run(redact(prompt))

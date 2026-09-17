@@ -70,55 +70,68 @@ reported alone.
 Three units against a real checkout of `encode/httpx`, with `TARGET_REPO` and
 `TARGET_WORKSPACE` pointed at the repository the traffic came from.
 
-| unit | baseline | agent touched | stopped on |
+```
+3 units, 1 reached a proposal
+  file agreement   0.0  (exact 0.0)
+  completion rate  0.333   <- the guardrail
+  latency          median 28908ms, max 68934ms
+  stopped on duplicate_tool_call: 1, max_turns: 1
+```
+
+| unit | baseline | agent touched | verdict |
 |---|---|---|---|
-| #3349 | *Docs minor fix* — 1 file | `httpx/_client.py` | `duplicate_tool_call` |
-| #3111 | *Use more permissible types in ASGIApp* — 2 files | `httpx/_transports/asgi.py` | `repeated_tool_failure` |
-| #2810 | *ASGI raw_path should not include the query* — 3 files | — | `allowlist_workaround` |
+| #3349 | `docs/advanced/transports.md` | `httpx/_client.py` | disagreed |
+| #3111 | `httpx/_transports/asgi.py` | `httpx/_transports/asgi.py` | incomplete — `max_turns` |
+| #2810 | `httpx/_transports/asgi.py`, `tests/test_asgi.py` | — | incomplete — `duplicate_tool_call` |
 
-```
-3 units, 0 reached a proposal
-  file agreement   None (no unit finished)
-  completion rate  0.0   <- the guardrail
-  stopped on allowlist_workaround: 1, duplicate_tool_call: 1, repeated_tool_failure: 1
-```
+**The first batch completed nothing, and a third of that was our own prompt.**
+It said *"you are inside a checkout of that repository"* without naming the
+path, so the agent guessed `/repo/httpx/...` and the workspace guard refused it
+— in all three units, before anything else went wrong. `agent/tickets.py`'s
+`task_prompt` has named the workspace since day 4; this prompt was written
+separately and did not. Naming it, with no other change, moved completion from
+0.0 to 0.333 on the same three units. That is `F42`, and it is ours.
 
-**One of three had found the right file before it died** — `#3111` touched
-`httpx/_transports/asgi.py`, which is what the merged pull request changed. The
-other two had not: `#3349` went to `_client.py` where the fix was in
-`docs/advanced/transports.md`, and `#2810` touched nothing.
+The other two stop reasons are the agent's, and both stay open. With no write
+path in bash it improvises scripting to make an edit — heredocs, `python -c` —
+and retries the same shape rather than reaching for the editor tool (`F43`).
+And `run_tests` cannot work on a clone with no virtualenv, so it tries pytest
+directly (`F44`); on foreign traffic there is no green suite to converge to at
+all, which is a scope limit of this agent's loop, not a bug in it.
 
-That correction is the argument for building the comparator. Read by eye, this
-looked like two hits out of three, and it was written up that way. The
-comparator says one, and it is right — which is exactly the gap between "I have
-logs" and "here is what the run told me".
+**Agreement is still 0.0, and the unit that finished is the reason.** `#3349`
+went to `httpx/_client.py` for a fix that lived in `docs/advanced/transports.md`.
+The one unit that had the right file — `#3111`, on `httpx/_transports/asgi.py` —
+ran out of turns before stating a proposal, so it counts as incomplete and not
+as a hit. Reading it as "one of three found the right place" would be counting
+a run that never finished; the guardrail exists to stop exactly that.
 
-**And the completion rate is 0.0.** All three died on this project's own
-guards, not on the work: an identical bash call repeated, a rejected shell
-operator, and the cross-tool guard cutting `cd` followed by `cat`. None reached
-a stated proposal, so the agreement number has no denominator worth quoting and
-the summary says so rather than dividing by what survived.
-
-That is the finding, and it is the same one the first completed ticket produced
-— six of its eight blockers were our guards rather than the model. A shadow run
-against unfamiliar traffic surfaces it again, immediately, and at a scale where
-it is obviously systematic rather than anecdotal. The guards are individually
-defensible; together, in a repository whose layout the agent has to discover,
-they are the binding constraint.
+That correction is the argument for building the comparator. Read by eye, the
+first batch looked like two hits out of three, and it was written up that way.
+The comparator says one, and it is right — which is exactly the gap between "I
+have logs" and "here is what the run told me".
 
 ## Why the batch stops at three
 
-**It already answered the question.** Three units produced a consistent,
-specific finding. Fifty more would produce it fifty more times, which is
-spending to restate something rather than to learn it.
+The full corpus is 60 units and the command is `make shadow-run LIMIT=60`.
+Running it costs, measured from this batch's own usage rather than estimated:
+6.5k uncached input, 199k cache-read and 3.6k output tokens per unit, which on
+`claude-haiku-4-5` is **about $0.045 a unit, roughly $2.70 for all sixty**, and
+between thirty and seventy minutes of wall clock at the latencies above.
+
+So cost is not the reason, and claiming it was would be the dishonest version
+of this paragraph. The reason is that **the finding does not need more units.**
+Both open modes — the agent improvising a shell to write, and having no test
+oracle on a repository it does not own — are structural. They reproduce on
+every unit, and fifty-seven more would restate them rather than test them. The
+number worth buying sixty units for is file agreement, and agreement is only
+meaningful once completion is high enough to have a denominator; at 0.333 it is
+not. Raising completion is a code change, not a sample-size change.
 
 **And the agent has no parallel system to shadow.** Shadow mode's value is
 running beside something already serving traffic; nothing here does that job.
 `Baseline.unavailable()` exists for exactly this and says so rather than
 inventing one.
-
-Cost is real and comes last, because putting it first would be the weaker
-argument.
 
 ## What the run cannot say
 
@@ -136,8 +149,11 @@ The runner works, on any repository, and the mechanism is complete:
 - **Redaction at write time**, on values rather than on the serialised
   document — the first version redacted the JSON itself and the phone pattern
   ate the punctuation between fields, producing records that would not parse.
-- **Writes are refused by the runtime's own gate**, not by a switch this code
-  invents for the occasion.
+- **Writes are no-ops that return the payload they intended**, not refusals.
+  The first version closed the runtime's write gate, and a gate answers
+  DENIED — so the agent tried to edit, was refused, retried and stopped
+  without ever stating what it would have changed (`F40`). A gate says no;
+  shadow says done.
 - **Zero writes is proved by GitHub**, in `audit.py`, by counting comments,
   branches and pull requests before and after. `SHADOW_MODE`, the write gate
   and the receipts are all ours, and a bug in any of them produces exactly the

@@ -225,3 +225,55 @@ def test_cost_stays_none_until_a_price_is_configured():
     from shadow.diff import summarise
 
     assert summarise([_record(["/repo/a.py"], ["a.py"])])["cost_usd_per_unit"] is None
+
+
+@pytest.mark.parametrize("touched,wanted,verdict", [
+    # exact
+    (["httpx/_client.py"], ["httpx/_client.py"], "agreed"),
+    # the agent's absolute path against the PR's relative one
+    (["/repo/httpx/_client.py"], ["httpx/_client.py"], "agreed"),
+    (["/Users/x/clones/encode-httpx/httpx/_client.py"], ["httpx/_client.py"], "agreed"),
+    # a suffix that is a whole path component, not a coincidence
+    (["_client.py"], ["httpx/_client.py"], "agreed"),
+    # same basename, different package — must NOT match
+    (["httpx/_transports/utils.py"], ["httpx/_models/utils.py"], "disagreed"),
+    # right place plus somewhere else
+    (["httpx/_client.py", "httpx/_models.py"], ["httpx/_client.py"], "agreed"),
+    # one of two
+    (["httpx/_client.py"], ["httpx/_client.py", "tests/test_client.py"], "partial"),
+    # nothing in common
+    (["README.md"], ["httpx/_client.py"], "disagreed"),
+])
+def test_path_matching_at_the_edges(touched, wanted, verdict):
+    # The metric is only as good as this comparison, and it was exercised
+    # against three records — one of which happened to hit. A false "agreed"
+    # baked into a number is worse than no number.
+    from shadow.diff import classify
+
+    assert classify(_record(touched, wanted))["verdict"] == verdict
+
+
+def test_a_changelog_only_baseline_has_nothing_to_find():
+    # Every pull request touches one. A baseline that is *only* noise leaves
+    # nothing to agree with, and calling that a disagreement would blame the
+    # agent for the filter.
+    from shadow.diff import classify
+
+    assert classify(_record(["httpx/_client.py"], ["CHANGELOG.md"]))["verdict"] \
+        == "baseline-unavailable"
+
+
+def test_the_shadow_prompt_names_the_workspace_it_dropped_the_agent_in(monkeypatch, tmp_path):
+    # F42. The prompt said "you are inside a checkout of that repository" and
+    # stopped there. The agent guessed /repo/httpx/... and the workspace guard
+    # refused it — in all three units, before anything else went wrong.
+    # agent/tickets.py::task_prompt has named the path since day 4; this one
+    # was written without reading it.
+    from shadow.runner import shadow_prompt
+
+    prompt = shadow_prompt({"repo": "encode/httpx", "issue": 3111,
+                            "title": "t", "body": "b"}, tmp_path)
+    assert str(tmp_path) in prompt
+    assert "/repo" in prompt, "it must name the path the agent invented, to forbid it"
+    # The two constraints the other three stops came from.
+    assert "editor" in prompt and "run_tests" in prompt

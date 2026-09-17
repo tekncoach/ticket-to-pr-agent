@@ -1,34 +1,31 @@
 {
   "units": 3,
   "file_agreement": {
-    "of_finished": null,
-    "exact": null,
-    "finished": 0
+    "of_finished": 0.0,
+    "exact": 0.0,
+    "finished": 1
   },
-  "completion_rate": 0.0,
+  "completion_rate": 0.333,
   "stopped_on": {
-    "allowlist_workaround": 1,
     "duplicate_tool_call": 1,
-    "repeated_tool_failure": 1
+    "max_turns": 1
   },
   "latency_ms": {
-    "median": 38214.0,
-    "max": 40287.0
+    "median": 28907.9,
+    "max": 68934.3
   },
-  "tokens_per_unit": 10009.3,
+  "tokens_per_unit": 10127.3,
   "cost_usd_per_unit": null,
   "disagreements": [
     {
       "id": "encode-httpx-3349",
-      "verdict": "incomplete",
+      "verdict": "disagreed",
       "hit": [],
       "missed": [
         "docs/advanced/transports.md"
       ],
-      "extra": [
-        "httpx/_client.py"
-      ],
-      "stopped_on": "duplicate_tool_call",
+      "extra": [],
+      "stopped_on": null,
       "baseline_action": "Docs minor fix"
     },
     {
@@ -39,7 +36,7 @@
       ],
       "missed": [],
       "extra": [],
-      "stopped_on": "repeated_tool_failure",
+      "stopped_on": "duplicate_tool_call",
       "baseline_action": "Use more permissible types in ASGIApp "
     },
     {
@@ -51,22 +48,20 @@
         "tests/test_asgi.py"
       ],
       "extra": [],
-      "stopped_on": "allowlist_workaround",
+      "stopped_on": "max_turns",
       "baseline_action": "Ensure that ASGI 'raw_path' does not include query component of URL."
     }
   ],
   "rows": [
     {
       "id": "encode-httpx-3349",
-      "verdict": "incomplete",
+      "verdict": "disagreed",
       "hit": [],
       "missed": [
         "docs/advanced/transports.md"
       ],
-      "extra": [
-        "httpx/_client.py"
-      ],
-      "stopped_on": "duplicate_tool_call",
+      "extra": [],
+      "stopped_on": null,
       "baseline_action": "Docs minor fix"
     },
     {
@@ -77,7 +72,7 @@
       ],
       "missed": [],
       "extra": [],
-      "stopped_on": "repeated_tool_failure",
+      "stopped_on": "duplicate_tool_call",
       "baseline_action": "Use more permissible types in ASGIApp "
     },
     {
@@ -89,7 +84,7 @@
         "tests/test_asgi.py"
       ],
       "extra": [],
-      "stopped_on": "allowlist_workaround",
+      "stopped_on": "max_turns",
       "baseline_action": "Ensure that ASGI 'raw_path' does not include query component of URL."
     }
   ]
