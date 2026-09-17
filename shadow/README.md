@@ -90,6 +90,14 @@ request that resolved it.
              max_turns: 2, repeated_tool_failure: 1
 ```
 
+`0.75` is not a rate and the output says so: four finished units, and one of
+them read differently puts it anywhere in `[0.50, 1.00]`. `evals/drift.py`
+refuses to compare points for the same reason — *"a single case here has scored
+0.00 and 1.00 on consecutive passes"* — so the swing travels with the figure
+rather than sitting in a footnote. Below ten finished units the summary marks
+`enough_to_be_a_rate: false`; at ten, one case moves the number by 0.1, which
+is the most this project is willing to call noise.
+
 Agreement counts one exact hit (`#2666`, `httpx/_auth.py` — the missing
 `file=None` default on `NetRCAuth`) and two partials adjudicated
 `half-the-fix`: `#2715` put `socket_options` in
@@ -102,7 +110,11 @@ building and pointing at prior art is a judgement this metric cannot see).
 
 Both partials are written up in `adjudications.json` with the reason, because
 "found half the fix" and "touched a file that happens to overlap" are the same
-word until someone says which.
+word until someone says which. **Both calls were made on the corrected trees**,
+not before them — the file was created in the same commit as `checkout_base()`,
+and the reason recorded for `#2443` quotes the constraint
+`httpcore>=0.15.0,<0.16.0`, which exists only on the pre-fix tree; the run
+against current `main` saw `httpcore==1.*` and was adjudicated on nothing.
 
 ### The batch before this one was measuring the wrong thing
 

@@ -1,12 +1,17 @@
 {
-  "run_at": "20260917T221406Z",
+  "run_at": "20260917T222315Z",
   "units": 15,
   "wrong_tree": [],
   "file_agreement": {
     "of_finished": 0.75,
     "exact": 0.25,
     "finished": 4,
-    "partials_awaiting_adjudication": []
+    "partials_awaiting_adjudication": [],
+    "one_unit_swing": [
+      0.5,
+      1.0
+    ],
+    "enough_to_be_a_rate": false
   },
   "completion_rate": 0.267,
   "stopped_on": {

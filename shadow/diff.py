@@ -32,6 +32,15 @@ HERE = Path(__file__).parent
 # Files every pull request touches that say nothing about where the work is.
 NOISE = ("CHANGELOG.md", "CHANGES.md", "HISTORY.md")
 
+# Below this many finished units, agreement is not a rate and must not be
+# quoted as one: at ten, a single unit changing its verdict moves it by 0.1,
+# which is the most this project is willing to call noise. At four it moves it
+# by 0.25. evals/drift.py already refuses to compare points for the same
+# reason — "a single case here has scored 0.00 and 1.00 on consecutive passes"
+# — so the shadow side reports the interval one flipped unit spans rather than
+# a number a reader would quote.
+MIN_FINISHED_FOR_A_RATE = 10
+
 
 # The adjudication queue. A "partial" verdict says the agent touched some of
 # the files the merged pull request changed and not all of them, which is two
@@ -129,6 +138,21 @@ def classify(record: dict) -> dict:
             "baseline_action": baseline.get("action", "")}
 
 
+def _swing(predicate, of) -> list[float] | None:
+    """The interval one finished unit flipping either way would produce.
+
+    Not a confidence interval — this project does not invent statistics it
+    cannot check. It is the smallest honest statement about a small sample:
+    here is how far the number moves if a single case is read differently,
+    which at n=4 is a quarter of the scale.
+    """
+    if not of:
+        return None
+    agreed = sum(1 for r in of if predicate(r))
+    n = len(of)
+    return [round(max(agreed - 1, 0) / n, 3), round(min(agreed + 1, n) / n, 3)]
+
+
 def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
     adjudications = adjudications or {}
     rows = [classify(r) for r in records]
@@ -171,6 +195,11 @@ def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
             # Named, never defaulted: a pending partial is a number that is
             # not yet readable, not a zero.
             "partials_awaiting_adjudication": pending,
+            # What one finished unit changing its mind would do to the number
+            # above. Reported always, because the caveat has to travel with
+            # the figure or it gets quoted without it.
+            "one_unit_swing": _swing(counts_as_agreement, finished),
+            "enough_to_be_a_rate": len(finished) >= MIN_FINISHED_FOR_A_RATE,
         },
         # The guardrail. A high agreement rate over the few units that finished
         # is a number that flatters itself.
@@ -216,7 +245,10 @@ def main() -> int:
 
     agreement = summary["file_agreement"]
     print(f"{summary['units']} units, {agreement['finished']} reached a proposal")
-    print(f"  file agreement   {agreement['of_finished']}  (exact {agreement['exact']})")
+    swing = agreement["one_unit_swing"]
+    caveat = "" if agreement["enough_to_be_a_rate"] else \
+        f"  <- {agreement['finished']} finished; one unit swings it to {swing}, not a rate"
+    print(f"  file agreement   {agreement['of_finished']}  (exact {agreement['exact']}){caveat}")
     print(f"  completion rate  {summary['completion_rate']}   <- the guardrail")
     waiting = summary["file_agreement"]["partials_awaiting_adjudication"]
     if waiting:

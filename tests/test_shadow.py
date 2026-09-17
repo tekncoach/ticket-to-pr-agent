@@ -444,3 +444,43 @@ def test_f46_ordinary_shell_plumbing_is_not_on_the_allowlist(tmp_path, attempt):
     result = _bash(tmp_path, attempt)
     assert not result.ok, f"{attempt!r} is now allowed — say so in F46 or revert"
     assert result.error_code.startswith("denied:")
+
+
+# --- a small sample is not a rate ------------------------------------------
+
+def test_agreement_at_four_units_carries_the_swing_one_case_would_cause():
+    # evals/drift.py refuses to compare points because "a single case here has
+    # scored 0.00 and 1.00 on consecutive passes". The same discipline: at four
+    # finished units, 0.75 and 0.50 are one reading apart, and the caveat has
+    # to travel with the figure or it gets quoted without it.
+    from shadow.diff import summarise
+
+    finished = [_record(["a.py"], ["a.py"]) for _ in range(3)] + [_record(["z.py"], ["a.py"])]
+    for i, r in enumerate(finished):
+        r["request_id"] = f"u{i}"
+
+    agreement = summarise(finished)["file_agreement"]
+    assert agreement["of_finished"] == 0.75
+    assert agreement["one_unit_swing"] == [0.5, 1.0]
+    assert agreement["enough_to_be_a_rate"] is False
+
+
+def test_a_sample_large_enough_says_so():
+    from shadow.diff import MIN_FINISHED_FOR_A_RATE, summarise
+
+    rows = [_record(["a.py"], ["a.py"]) for _ in range(MIN_FINISHED_FOR_A_RATE)]
+    for i, r in enumerate(rows):
+        r["request_id"] = f"u{i}"
+    agreement = summarise(rows)["file_agreement"]
+    assert agreement["enough_to_be_a_rate"] is True
+    # Even then the swing is reported — it is a fact about the sample, not a
+    # warning that switches off.
+    assert agreement["one_unit_swing"] == [0.9, 1.0]
+
+
+def test_the_swing_is_none_when_nothing_finished():
+    # Never a default: no finished units is not a swing of zero.
+    from shadow.diff import summarise
+
+    stopped = _record([], ["a.py"], stopped_on="max_turns")
+    assert summarise([stopped])["file_agreement"]["one_unit_swing"] is None

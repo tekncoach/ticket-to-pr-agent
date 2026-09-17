@@ -201,3 +201,31 @@ def test_the_shape_decides_which_triage_runs(tmp_path):
     path.write_text(json.dumps(_shadow_summary()))
     with patch.object(sys, "argv", ["promote", "--from-run", "--triage", str(path)]):
         assert main() == 0
+
+
+def test_triage_fires_on_a_stop_reason_the_sheet_has_never_named():
+    # The coverage check is a substring match on the sheet's free text, which
+    # is crude in both directions: it can miss a new reason whose words happen
+    # to appear elsewhere, and it can go silent on a real recurrence. These two
+    # tests are what say it still fires and still stays quiet.
+    from evals.promote import triage_shadow
+
+    summary = _shadow_summary(stopped_on={"turn_budget_exhausted": 2},
+                              rows=[{"id": "u1", "verdict": "incomplete",
+                                     "stopped_on": "turn_budget_exhausted",
+                                     "hit": [], "missed": ["a.py"]}])
+    sheet = [{"summary": "the agent improvises a shell", "fix": "editor"}]
+    rows = triage_shadow(sheet, summary, "x")
+    assert any("turn_budget_exhausted" in r for r in rows)
+
+
+def test_triage_stays_silent_when_the_sheet_names_the_reason_in_its_fix_column():
+    # Coverage is read from summary AND fix, because a mode is often described
+    # in the sentence saying what was done about it.
+    from evals.promote import triage_shadow
+
+    summary = _shadow_summary(stopped_on={"max_turns": 3},
+                              rows=[{"id": "u1", "verdict": "incomplete",
+                                     "stopped_on": "max_turns", "hit": [], "missed": []}])
+    sheet = [{"summary": "unrelated", "fix": "raised the max_turns ceiling to 30"}]
+    assert not any("max_turns" in r for r in triage_shadow(sheet, summary, "x"))
