@@ -3,7 +3,8 @@
   "file_agreement": {
     "of_finished": 0.0,
     "exact": 0.0,
-    "finished": 1
+    "finished": 1,
+    "partials_awaiting_adjudication": []
   },
   "completion_rate": 0.333,
   "stopped_on": {

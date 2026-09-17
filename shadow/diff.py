@@ -32,6 +32,39 @@ HERE = Path(__file__).parent
 NOISE = ("CHANGELOG.md", "CHANGES.md", "HISTORY.md")
 
 
+# The adjudication queue. A "partial" verdict says the agent touched some of
+# the files the merged pull request changed and not all of them, which is two
+# very different findings wearing the same word: it found half the fix, or it
+# touched an unrelated file that happens to overlap. Nothing deterministic
+# separates those, so the metric refuses to guess — an unadjudicated partial
+# does not count as agreement, and the summary reports how many are waiting so
+# the number is never quoted as if it were settled.
+ADJUDICATIONS = HERE / "adjudications.json"
+CALLS = ("half-the-fix", "coincidental")
+
+
+def load_adjudications(path: Path = ADJUDICATIONS) -> dict:
+    if not path.exists():
+        return {}
+    return {k: v for k, v in json.loads(path.read_text(encoding="utf-8")).items()
+            if isinstance(v, dict) and v.get("call") in CALLS}
+
+
+def adjudication_queue(rows: list[dict], existing: dict) -> dict:
+    """Every partial, with what it hit and what it missed, and a blank call.
+
+    Written rather than printed because the answer has to survive the next run
+    — a judgement made once and lost is a judgement made every time.
+    """
+    queue = dict(existing)
+    for row in rows:
+        if row["verdict"] != "partial" or row["id"] in queue:
+            continue
+        queue[row["id"]] = {"call": None, "why": "",
+                            "hit": row["hit"], "missed": row["missed"]}
+    return queue
+
+
 def repo_relative(path: str, repo_hint: str = "") -> str:
     """The agent works in absolute paths; the baseline is repo-relative.
 
@@ -90,8 +123,22 @@ def classify(record: dict) -> dict:
             "baseline_action": baseline.get("action", "")}
 
 
-def summarise(records: list[dict]) -> dict:
+def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
+    adjudications = adjudications or {}
     rows = [classify(r) for r in records]
+
+    def counts_as_agreement(row):
+        if row["verdict"] == "agreed":
+            return True
+        if row["verdict"] != "partial":
+            return False
+        # Conservative on purpose: a partial nobody has looked at is not
+        # evidence the agent found the place, and rounding it up is exactly
+        # how an unverified judgement gets baked into a headline number.
+        return adjudications.get(row["id"], {}).get("call") == "half-the-fix"
+
+    pending = [r["id"] for r in rows if r["verdict"] == "partial"
+               and r["id"] not in adjudications]
     comparable = [r for r in rows if r["verdict"] not in ("baseline-unavailable",)]
     finished = [r for r in rows if r["verdict"] not in ("incomplete", "baseline-unavailable")]
 
@@ -106,9 +153,12 @@ def summarise(records: list[dict]) -> dict:
         # The primary metric. Reported over units that finished, because a
         # unit that never stated a proposal did not agree or disagree.
         "file_agreement": {
-            "of_finished": share(lambda r: r["verdict"] in ("agreed", "partial"), finished),
+            "of_finished": share(counts_as_agreement, finished),
             "exact": share(lambda r: r["verdict"] == "agreed", finished),
             "finished": len(finished),
+            # Named, never defaulted: a pending partial is a number that is
+            # not yet readable, not a zero.
+            "partials_awaiting_adjudication": pending,
         },
         # The guardrail. A high agreement rate over the few units that finished
         # is a number that flatters itself.
@@ -140,13 +190,23 @@ def main() -> int:
         return 1
 
     records = [json.loads(l) for l in args.results.read_text(encoding="utf-8").splitlines() if l.strip()]
-    summary = summarise(records)
+    adjudications = load_adjudications()
+    summary = summarise(records, adjudications)
+
+    queue = adjudication_queue(summary["rows"], adjudications)
+    if queue:
+        ADJUDICATIONS.write_text(json.dumps(queue, indent=2, ensure_ascii=False) + "\n",
+                                 encoding="utf-8")
     args.out.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     agreement = summary["file_agreement"]
     print(f"{summary['units']} units, {agreement['finished']} reached a proposal")
     print(f"  file agreement   {agreement['of_finished']}  (exact {agreement['exact']})")
     print(f"  completion rate  {summary['completion_rate']}   <- the guardrail")
+    waiting = summary["file_agreement"]["partials_awaiting_adjudication"]
+    if waiting:
+        print(f"  {len(waiting)} partial(s) not counted as agreement until called "
+              f"in {ADJUDICATIONS.name}: {', '.join(waiting)}")
     print(f"  latency          median {summary['latency_ms']['median']}ms, "
           f"max {summary['latency_ms']['max']}ms")
     for reason, count in summary["stopped_on"].items():

@@ -277,3 +277,115 @@ def test_the_shadow_prompt_names_the_workspace_it_dropped_the_agent_in(monkeypat
     assert "/repo" in prompt, "it must name the path the agent invented, to forbid it"
     # The two constraints the other three stops came from.
     assert "editor" in prompt and "run_tests" in prompt
+
+
+# --- what the agent actually tried on traffic it did not own ----------------
+#
+# F43 and F44 were written down as open modes with a named next step and
+# nothing a future fix could prove itself against. Every other row in the
+# sheet carries a case_id and a test; these carry the shapes below.
+#
+# They assert the refusal, which is today's behaviour and not the behaviour we
+# want. The Claude SDK permission-mode migration is expected to make the
+# editor reachable without the agent reaching for a shell at all — when it
+# lands, these tests are what say whether it worked, and either they change
+# with a stated reason or the migration did not fix the mode.
+
+def _bash(tmp_path, command):
+    from unittest.mock import patch
+    from tools.bash import bash
+    with patch("tools.bash.WORKSPACE", tmp_path):
+        return bash.handler({"command": command})
+
+
+@pytest.mark.parametrize("attempt", [
+    # Straight out of the first batch's traces: with no write path in bash the
+    # agent improvises one rather than reaching for the editor tool.
+    "python3 << EOF\nprint(1)\nEOF",
+    "python -c \"open('httpx/_client.py','a').write('x')\"",
+    "cat > httpx/_client.py",
+    "echo x >> httpx/_client.py",
+    "sed -i 's/a/b/' httpx/_client.py",
+])
+def test_f43_the_shell_is_not_a_write_path_however_the_agent_asks(tmp_path, attempt):
+    result = _bash(tmp_path, attempt)
+    assert not result.ok, f"{attempt!r} would be a write through bash"
+    assert result.error_code.startswith("denied:")
+
+
+def test_f44_pytest_on_a_foreign_clone_is_refused_at_the_executable(tmp_path):
+    # run_tests needs the target's own interpreter and a clone has none, so the
+    # agent tries the suite directly. It is refused at the allowlist, which is
+    # correct and also the end of its loop: on traffic we do not own there is
+    # no green suite to converge to at all. That scope limit is stated in
+    # shadow/README.md rather than papered over.
+    for attempt in ("python -m pytest tests/", "pytest tests/test_asgi.py"):
+        result = _bash(tmp_path, attempt)
+        assert not result.ok
+        assert "executable not allowed" in result.error_code
+
+
+def test_f42_the_path_the_agent_invented_is_still_refused(tmp_path):
+    # The prompt now names the workspace (F42), which is a mitigation. The
+    # guard is the thing that must not regress: if /repo ever resolves, a
+    # shadow run reads files from outside the checkout it claims to be in.
+    result = _bash(tmp_path, "cat /repo/httpx/_client.py")
+    assert not result.ok
+    assert "escapes workspace" in result.error_code
+
+
+# --- partial is two findings wearing one word ------------------------------
+
+ID = "encode-httpx-1"
+
+
+def _partial():
+    # The agent touched one of the two files the pull request changed.
+    return _record(["httpx/_transports/asgi.py"],
+                   ["httpx/_transports/asgi.py", "tests/test_asgi.py"])
+
+
+def test_an_unadjudicated_partial_does_not_count_as_agreement():
+    # "Found half the fix" and "touched a file that happens to overlap" are
+    # different findings and nothing deterministic separates them. Rounding a
+    # partial up is how an unverified judgement gets baked into the headline.
+    from shadow.diff import summarise
+
+    s = summarise([_partial()])
+    assert s["file_agreement"]["of_finished"] == 0.0
+    assert s["file_agreement"]["partials_awaiting_adjudication"] == [ID]
+
+
+def test_a_partial_called_half_the_fix_counts_and_one_called_coincidental_does_not():
+    from shadow.diff import summarise
+
+    half = summarise([_partial()], {ID: {"call": "half-the-fix", "why": "the asgi change is the fix; the test is its cover"}})
+    assert half["file_agreement"]["of_finished"] == 1.0
+    assert half["file_agreement"]["partials_awaiting_adjudication"] == []
+
+    coincidental = summarise([_partial()], {ID: {"call": "coincidental", "why": "touched it to read a constant"}})
+    assert coincidental["file_agreement"]["of_finished"] == 0.0
+
+
+def test_a_call_that_is_not_one_of_the_two_is_not_a_call(tmp_path):
+    # A free-text verdict in the queue must not silently count. Only the two
+    # named calls are calls; anything else is still waiting.
+    from shadow.diff import load_adjudications
+
+    q = tmp_path / "adjudications.json"
+    q.write_text(json.dumps({ID: {"call": "looks fine", "why": ""},
+                             "other": {"call": "half-the-fix", "why": "x"}}))
+    assert list(load_adjudications(q)) == ["other"]
+
+
+def test_the_queue_keeps_a_call_already_made_and_only_adds_new_partials():
+    # A judgement made once and lost is a judgement made every time.
+    from shadow.diff import adjudication_queue, classify
+
+    rows = [classify(_partial())]
+    existing = {ID: {"call": "coincidental", "why": "checked by hand"}}
+    assert adjudication_queue(rows, existing) == existing
+
+    fresh = adjudication_queue(rows, {})
+    assert fresh[ID]["call"] is None
+    assert fresh[ID]["missed"] == ["tests/test_asgi.py"]

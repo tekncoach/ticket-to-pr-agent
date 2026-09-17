@@ -60,6 +60,16 @@ says nothing about where the work is. Comparing the edits themselves needs a
 judge, and this project does not hand its judge anything it can decide
 deterministically.
 
+**Partial verdicts are not counted until someone calls them.** A unit that
+touched some of the baseline's files and not all of them is two very different
+findings wearing one word — it found half the fix, or it touched a file that
+happens to overlap — and nothing deterministic separates them. `shadow/diff.py`
+writes each one to `adjudications.json` with what it hit and what it missed and
+a blank call; until the call is `half-the-fix` it does not count as agreement,
+and the summary prints how many are waiting so the number is never read as
+settled. At n=3 this changes nothing. At n=60 it is the difference between a
+metric and a flattering one.
+
 **Guardrail — completion rate.** How many units reached a stated proposal at
 all. High agreement over the three units that finished out of sixty that did
 not is a number that flatters itself, so the two travel together and neither is
@@ -120,13 +130,21 @@ Running it costs, measured from this batch's own usage rather than estimated:
 between thirty and seventy minutes of wall clock at the latencies above.
 
 So cost is not the reason, and claiming it was would be the dishonest version
-of this paragraph. The reason is that **the finding does not need more units.**
-Both open modes — the agent improvising a shell to write, and having no test
-oracle on a repository it does not own — are structural. They reproduce on
-every unit, and fifty-seven more would restate them rather than test them. The
-number worth buying sixty units for is file agreement, and agreement is only
-meaningful once completion is high enough to have a denominator; at 0.333 it is
-not. Raising completion is a code change, not a sample-size change.
+of this paragraph.
+
+**The honest version is that three units do not yet support the claim they were
+used to make.** An earlier draft of this section said both open modes are
+structural and reproduce on every unit. They were each seen once. One
+shell-improvisation stop and one test-oracle stop is a reason to expect a
+pattern, not evidence of one, and a third mode that neither `F43` nor `F44`
+predicts would not have had room to show up. `make shadow-run LIMIT=15` is the
+slice that tests it — large enough to tell a dominant mode from a coincidence,
+about $0.70, and it is the next thing this page should be updated with.
+
+What sixty units still would not buy is a readable agreement number. Agreement
+is only meaningful once completion is high enough to have a denominator; at
+0.333 it is not, and raising completion is a code change rather than a
+sample-size change.
 
 **And the agent has no parallel system to shadow.** Shadow mode's value is
 running beside something already serving traffic; nothing here does that job.

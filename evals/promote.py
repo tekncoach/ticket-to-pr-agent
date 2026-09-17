@@ -12,12 +12,20 @@
 #
 # Three things this does, all of them refusals to take a word for it:
 #
-#   --check    every closed mode names a test that exists; every mode names a
-#              case that exists; no mode is both closed and unpinned.
+#   --check    every closed or witnessed mode names a test that exists; every
+#              mode names a case that exists; no mode is both closed and
+#              unpinned, and no open mode claims a pin it does not have.
 #   --triage   failures in the latest run that no row covers, printed as CSV
 #              rows ready to paste. This is the promotion step, and it is the
 #              one that has to be cheap or it stops happening.
 #   (default)  the standing report: what is open, closed, accepted.
+#
+# "witnessed" is the fourth status, and it exists because a shadow run found
+# two modes that are real, reproducible and not fixed. "open" forbids a pin,
+# which left them with nothing a future fix could prove itself against;
+# "closed" would have been a lie. A witnessed mode names a test that pins the
+# CURRENT behaviour — the behaviour we do not want — so the day it changes,
+# that test either changes with a stated reason or the fix did not land.
 #
 # What it does NOT do is promote from production traffic, because there is
 # none. The inputs are the golden set and the replay corpus, and saying so is
@@ -33,7 +41,7 @@ SHEET = Path(__file__).parent / "failure-modes.csv"
 RESULTS = Path(__file__).parent / "results"
 TESTS = Path(__file__).parent.parent / "tests"
 
-STATUSES = ("open", "closed", "known")
+STATUSES = ("open", "witnessed", "closed", "known")
 
 
 def load_sheet(path: Path = SHEET) -> list[dict]:
@@ -69,10 +77,10 @@ def check(rows: list[dict]) -> list[str]:
             problems.append(f"{mode}: status {status!r} is not one of {STATUSES}")
         if row["case_id"] not in known_cases:
             problems.append(f"{mode}: case {row['case_id']!r} does not exist")
-        if status == "closed":
+        if status in ("closed", "witnessed"):
             pin = row.get("pinned_by", "")
             if not pin:
-                problems.append(f"{mode}: closed with nothing pinning it")
+                problems.append(f"{mode}: {status} with nothing pinning it")
             elif not _test_exists(pin):
                 problems.append(f"{mode}: pinned by {pin!r}, which is not there")
         elif row.get("pinned_by"):
@@ -134,7 +142,7 @@ def main() -> int:
     for status in STATUSES:
         modes = sorted(by_status.get(status, set()),
                        key=lambda m: int(m.lstrip("F") or 0))
-        print(f"{status:<7} {len(modes):>2}  {' '.join(modes)}")
+        print(f"{status:<9} {len(modes):>2}  {' '.join(modes)}")
     return 0
 
 
