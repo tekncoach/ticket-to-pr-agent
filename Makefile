@@ -158,8 +158,10 @@ audit:
 # The failure-mode sheet. No argument: what is open, closed and accepted.
 #   make modes CHECK=1    every closed mode names a test that exists
 #   make modes FROM_RUN=1 failures in the latest run no row covers, as CSV rows
+#   make modes FROM_RUN=1 TRIAGE=shadow/summary.json  the same, for a shadow batch
 modes:
-	uv run python -m evals.promote $(if $(CHECK),--check,) $(if $(FROM_RUN),--from-run,)
+	uv run python -m evals.promote $(if $(CHECK),--check,) $(if $(FROM_RUN),--from-run,) \
+	  $(if $(TRIAGE),--triage $(TRIAGE),)
 
 # Freeze each run into evals/traces/ so CI can re-score it. Run where the
 # corpus is; commit what it writes.

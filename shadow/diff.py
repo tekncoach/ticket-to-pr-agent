@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import statistics
+import time
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -149,6 +150,8 @@ def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
     fresh = [r.get("input_tokens", 0) + r.get("output_tokens", 0) for r in records]
 
     return {
+        # Stamped so the promotion path can name the run a row came from.
+        "run_at": time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()),
         "units": len(records),
         # The primary metric. Reported over units that finished, because a
         # unit that never stated a proposal did not agree or disagree.
@@ -183,6 +186,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Compare shadow proposals to the baseline.")
     parser.add_argument("--results", type=Path, default=HERE / "results.jsonl")
     parser.add_argument("--out", type=Path, default=HERE / "summary.json")
+    # Explicit rather than module-level, so a run can be pointed somewhere
+    # else and a test never writes to the queue the repository keeps.
+    parser.add_argument("--adjudications", type=Path, default=ADJUDICATIONS)
     args = parser.parse_args()
 
     if not args.results.exists():
@@ -190,13 +196,13 @@ def main() -> int:
         return 1
 
     records = [json.loads(l) for l in args.results.read_text(encoding="utf-8").splitlines() if l.strip()]
-    adjudications = load_adjudications()
+    adjudications = load_adjudications(args.adjudications)
     summary = summarise(records, adjudications)
 
     queue = adjudication_queue(summary["rows"], adjudications)
     if queue:
-        ADJUDICATIONS.write_text(json.dumps(queue, indent=2, ensure_ascii=False) + "\n",
-                                 encoding="utf-8")
+        args.adjudications.write_text(
+            json.dumps(queue, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     args.out.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
 
     agreement = summary["file_agreement"]
@@ -206,7 +212,7 @@ def main() -> int:
     waiting = summary["file_agreement"]["partials_awaiting_adjudication"]
     if waiting:
         print(f"  {len(waiting)} partial(s) not counted as agreement until called "
-              f"in {ADJUDICATIONS.name}: {', '.join(waiting)}")
+              f"in {args.adjudications.name}: {', '.join(waiting)}")
     print(f"  latency          median {summary['latency_ms']['median']}ms, "
           f"max {summary['latency_ms']['max']}ms")
     for reason, count in summary["stopped_on"].items():

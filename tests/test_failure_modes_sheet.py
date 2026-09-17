@@ -140,3 +140,64 @@ def test_triage_stays_quiet_when_every_failure_is_already_tracked(tmp_path):
     report.write_text(json.dumps({"run_at": "X", "cases": [
         {"id": "qa-001", "pass": False, "severity": "P1", "violated": []}]}), encoding="utf-8")
     assert triage([{"case_id": "qa-001"}], report) == []
+
+
+# --- promoting a shadow run, not just an eval run ---------------------------
+
+def _shadow_summary(**over):
+    base = {
+        "run_at": "20260917T220000Z",
+        "completion_rate": 0.4,
+        "stopped_on": {"shell_operator_rejected": 4, "max_turns": 1},
+        "rows": [
+            {"id": "encode-httpx-1", "verdict": "incomplete",
+             "stopped_on": "shell_operator_rejected", "hit": [], "missed": ["a.py"]},
+            {"id": "encode-httpx-2", "verdict": "disagreed",
+             "stopped_on": None, "hit": [], "missed": ["b.py"]},
+        ],
+    }
+    base.update(over)
+    return base
+
+
+def test_a_shadow_run_promotes_by_stop_reason_not_by_unit():
+    # Fifteen units dying the same way is one row to write, not fifteen — the
+    # stop reason is the mode, the unit is just where it was seen.
+    from evals.promote import triage_shadow
+
+    rows = triage_shadow([], _shadow_summary(), "20260917T220000Z")
+    assert sum("shell_operator_rejected" in r for r in rows) == 1
+    assert "4 shadow unit(s) stopped on shell_operator_rejected" in " ".join(rows)
+
+
+def test_a_stop_reason_the_sheet_already_names_is_not_offered_again():
+    # The promotion path must be idempotent or it stops being run.
+    from evals.promote import triage_shadow
+
+    sheet = [{"summary": "the agent improvises a shell and the shell operator "
+                         "rejected guard refuses it", "fix": ""}]
+    rows = triage_shadow(sheet, _shadow_summary(), "x")
+    assert not any("shell_operator_rejected" in r for r in rows)
+
+
+def test_a_unit_that_finished_and_found_nothing_is_its_own_candidate():
+    # It has no stop reason to be grouped under, and "finished, touched none of
+    # the right files" is a different failure from "never finished".
+    from evals.promote import triage_shadow
+
+    rows = triage_shadow([], _shadow_summary(), "x")
+    assert any("touched none of the files" in r for r in rows)
+
+
+def test_the_shape_decides_which_triage_runs(tmp_path):
+    # An eval report carries cases with a pass field; a shadow summary carries
+    # verdicts and a completion rate. Told apart by what they hold, not a flag.
+    import json
+    from evals.promote import main
+    import sys
+    from unittest.mock import patch
+
+    path = tmp_path / "summary.json"
+    path.write_text(json.dumps(_shadow_summary()))
+    with patch.object(sys, "argv", ["promote", "--from-run", "--triage", str(path)]):
+        assert main() == 0

@@ -109,6 +109,44 @@ def triage(rows: list[dict], report_path: Path) -> list[str]:
     return candidates
 
 
+def triage_shadow(rows: list[dict], summary: dict, stamp: str) -> list[str]:
+    """A shadow run's failures, as candidate rows.
+
+    A shadow unit has no case id and no pass/fail — what it has is a stop
+    reason, and the stop reason IS the mode. So the grouping is by reason and
+    not by unit: fifteen units dying the same way is one row to write, not
+    fifteen. Coverage is checked against what the sheet already says rather
+    than against a case id, because these rows are pinned to golden flow cases
+    that describe the loop, not the traffic.
+
+    Written because the mechanism this project is proud of did not cover the
+    artifact it was being reviewed on: F39, F43 and F44 were hand-authored,
+    which is defensible once and is not a promotion path.
+    """
+    said = " ".join(f"{r.get('summary', '')} {r.get('fix', '')}" for r in rows).lower()
+    reasons = summary.get("stopped_on") or {}
+    candidates = []
+    for reason, count in sorted(reasons.items(), key=lambda kv: -kv[1]):
+        if reason.replace("_", " ") in said or reason in said:
+            continue
+        units = [r["id"] for r in summary.get("rows", []) if r.get("stopped_on") == reason]
+        candidates.append(
+            f'F??,flow-001,agent,P2,open,,{stamp},'
+            f'"{count} shadow unit(s) stopped on {reason} — {", ".join(units[:3])}",TBD')
+
+    # A unit that finished and touched none of the baseline's files is a
+    # different failure from one that never finished, and it has no stop
+    # reason to be grouped under.
+    missed = [r["id"] for r in summary.get("rows", [])
+              if r.get("verdict") == "disagreed" and not r.get("hit")]
+    if missed and "touched none of the files" not in said:
+        candidates.append(
+            f'F??,flow-001,agent,P2,open,,{stamp},'
+            f'"{len(missed)} shadow unit(s) finished and touched none of the files the '
+            f'merged pull request changed — {", ".join(missed[:3])}",TBD')
+    return candidates
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="The failure-mode promotion path.")
     parser.add_argument("--check", action="store_true")
@@ -128,7 +166,15 @@ def main() -> int:
         return 1 if problems else 0
 
     if args.from_run:
-        candidates = triage(rows, args.triage)
+        report = json.loads(args.triage.read_text(encoding="utf-8"))
+        # Two shapes, told apart by what they carry rather than by a flag:
+        # an eval report has cases with a pass field, a shadow summary has
+        # verdicts and a completion rate.
+        if "completion_rate" in report:
+            candidates = triage_shadow(
+                rows, report, report.get("run_at", args.triage.stem))
+        else:
+            candidates = triage(rows, args.triage)
         print(f"# uncovered failures in {args.triage.name}")
         for row in candidates:
             print(row)
