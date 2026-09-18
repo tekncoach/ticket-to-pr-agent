@@ -7,7 +7,10 @@
     ],
     "missed": [
       "pyproject.toml"
-    ]
+    ],
+    "winner": null,
+    "verdict": "partial",
+    "extra": []
   },
   "encode-httpx-2443": {
     "call": "half-the-fix",
@@ -16,8 +19,149 @@
       "pyproject.toml"
     ],
     "missed": [
-      "setup.py",
-      "httpx/__version__.py"
+      "httpx/__version__.py",
+      "setup.py"
+    ],
+    "winner": null,
+    "verdict": "partial",
+    "extra": []
+  },
+  "encode-httpx-3349": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "docs/advanced/transports.md"
+    ],
+    "extra": []
+  },
+  "encode-httpx-3111": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_transports/asgi.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2810": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_transports/asgi.py",
+      "tests/test_asgi.py"
+    ],
+    "extra": [
+      "httpx/_urls.py"
     ]
+  },
+  "encode-httpx-1434": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_config.py",
+      "httpx/_transports/default.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2794": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_types.py"
+    ],
+    "missed": [
+      "pyproject.toml"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2694": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_urlparse.py",
+      "tests/test_urlparse.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1278": {
+    "winner": null,
+    "why": "",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "docs/third_party_packages.md"
+    ],
+    "extra": [
+      "httpx/_models.py"
+    ]
+  },
+  "encode-httpx-2670": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_urlparse.py",
+      "tests/test_urlparse.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2660": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_utils.py",
+      "tests/test_utils.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-746": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_utils.py"
+    ],
+    "missed": [
+      "tests/models/test_queryparams.py"
+    ],
+    "extra": [
+      "httpx/_urls.py"
+    ]
+  },
+  "encode-httpx-2491": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_content.py",
+      "tests/test_content.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2462": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_types.py",
+      "httpx/_urls.py",
+      "tests/models/test_url.py"
+    ],
+    "extra": []
   }
 }
