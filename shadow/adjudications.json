@@ -163,5 +163,190 @@
       "tests/models/test_url.py"
     ],
     "extra": []
+  },
+  "encode-httpx-2397": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "mkdocs.yml"
+    ],
+    "missed": [],
+    "extra": []
+  },
+  "encode-httpx-2069": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_multipart.py"
+    ],
+    "missed": [
+      "httpx/_types.py",
+      "tests/test_multipart.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2249": {
+    "winner": null,
+    "why": "",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "httpx/_multipart.py",
+      "tests/test_multipart.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2331": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_urls.py",
+      "tests/models/test_queryparams.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2314": {
+    "winner": null,
+    "call": null,
+    "why": "",
+    "verdict": "partial",
+    "hit": [
+      "httpx/_types.py"
+    ],
+    "missed": [
+      "httpx/_models.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2126": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "docs/exceptions.md"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2139": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_client.py"
+    ],
+    "missed": [
+      "tests/client/test_async_client.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2049": {
+    "winner": null,
+    "why": "",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "httpx/_main.py",
+      "tests/conftest.py",
+      "tests/test_main.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1850": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_client.py",
+      "httpx/_utils.py",
+      "tests/client/test_redirects.py",
+      "tests/test_utils.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1739": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_decoders.py",
+      "httpx/_models.py",
+      "tests/models/test_responses.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2024": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_client.py"
+    ],
+    "missed": [
+      "tests/client/test_async_client.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1992": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_transports/default.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1928": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_models.py"
+    ],
+    "missed": [],
+    "extra": []
+  },
+  "encode-httpx-1615": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_client.py"
+    ],
+    "missed": [
+      "tests/client/test_async_client.py",
+      "tests/client/test_client.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1678": {
+    "winner": null,
+    "why": "",
+    "verdict": "incomplete",
+    "hit": [
+      ".github/workflows/test-suite.yml"
+    ],
+    "missed": [
+      "requirements.txt",
+      "tests/conftest.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1419": {
+    "winner": null,
+    "why": "",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "docs/async.md"
+    ],
+    "extra": []
   }
 }
