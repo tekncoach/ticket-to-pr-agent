@@ -622,3 +622,25 @@ def test_segments_are_computed_from_the_baseline_never_labelled(files, artifact,
 
     record = {"baseline": {"files": files, "artifact": artifact}}
     assert tags(record) == {"area": area, "size": size}
+
+
+def test_a_batch_grows_by_slices_without_losing_or_repeating_a_unit():
+    # Each slice's cost is measured before the next is paid for, so the runner
+    # must add to the batch, not replace it — and never pay twice for a unit.
+    from shadow.runner import select_units
+
+    units = [{"request_id": f"u{i}"} for i in range(6)]
+    earlier = [{"request_id": "u0"}, {"request_id": "u1"},
+               {"request_id": "u2", "tree_error": "ran on main"}]
+    run, kept = select_units(units, earlier, 2, skip_done=True)
+    assert [r["request_id"] for r in kept] == ["u0", "u1"]
+    # u2 ran on the wrong tree: it is run again and its old record dropped.
+    assert [u["request_id"] for u in run] == ["u2", "u3"]
+
+
+def test_without_skip_done_a_run_starts_from_the_top_and_keeps_nothing():
+    from shadow.runner import select_units
+
+    units = [{"request_id": f"u{i}"} for i in range(4)]
+    run, kept = select_units(units, [{"request_id": "u0"}], 2, skip_done=False)
+    assert [u["request_id"] for u in run] == ["u0", "u1"] and kept == []

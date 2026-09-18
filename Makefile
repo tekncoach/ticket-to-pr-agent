@@ -132,6 +132,7 @@ shadow-harvest:
 # The batch. LIMIT is deliberately small and shadow/README.md says why.
 shadow-run:
 	uv run --env-file .env python -m shadow.runner $(if $(LIMIT),--limit $(LIMIT),) \
+	  $(if $(SKIP_DONE),--skip-done,) \
 	  $(if $(MODEL),--model $(MODEL),)
 
 # Turn the pairwise log into a verdict: file agreement against the merged pull

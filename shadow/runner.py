@@ -220,6 +220,22 @@ def _proposal(outcome: dict, intended: list[dict]) -> dict:
     }
 
 
+def select_units(units: list[dict], earlier: list[dict], limit: int,
+                 skip_done: bool) -> tuple[list[dict], list[dict]]:
+    """Which units to run now, and which earlier records to keep.
+
+    Growing a batch in slices, so each slice's cost is measured before the
+    next is paid for. A record counts as done only if it ran on its own base
+    commit — a wrong-tree record is exactly the one worth running again, and
+    it is dropped rather than kept beside its replacement.
+    """
+    if not skip_done:
+        return units[:limit], []
+    kept = [r for r in earlier if not r.get("tree_error")]
+    done = {r["request_id"] for r in kept}
+    return [u for u in units if u["request_id"] not in done][:limit], kept
+
+
 def shadow_prompt(unit: dict, workspace) -> str:
     """What the agent is told on a repository it has never seen.
 
@@ -308,10 +324,21 @@ def main() -> int:
     parser.add_argument("--workspace", type=Path, default=None,
                         help="existing checkout to use instead of cloning")
     parser.add_argument("--out", type=Path, default=HERE / "results.jsonl")
+    parser.add_argument("--skip-done", action="store_true",
+                        help="run only units with no valid record yet, and add to --out "
+                             "rather than replace it")
     args = parser.parse_args()
 
     units = [json.loads(l) for l in args.traffic.read_text(encoding="utf-8").splitlines() if l.strip()]
-    units = units[:args.limit]
+
+    # Growing a batch in slices, so each slice's cost is measured before the
+    # next is paid for. A record counts as done only if it ran on its own base
+    # commit — a wrong-tree record is exactly the one worth running again.
+    earlier = []
+    if args.skip_done and args.out.exists():
+        earlier = [json.loads(l) for l in args.out.read_text(encoding="utf-8").splitlines()
+                   if l.strip()]
+    units, kept = select_units(units, earlier, args.limit, args.skip_done)
     if not units:
         print(f"no traffic in {args.traffic} — run `make shadow-harvest REPO=...`")
         return 1
@@ -345,10 +372,13 @@ def main() -> int:
     # Leave the clone somewhere sane rather than on the last unit's base.
     _git(target, "checkout", "--force", "-")
 
-    # Redacted already, at build time. Written once, here.
-    args.out.write_text(
-        "\n".join(json.dumps(asdict(r), ensure_ascii=False) for r in records) + "\n",
-        encoding="utf-8")
+    # Redacted already, at build time. Written once, here — after the records
+    # kept from earlier slices, so growing a batch never loses one.
+    lines = [json.dumps(r, ensure_ascii=False) for r in kept]
+    lines += [json.dumps(asdict(r), ensure_ascii=False) for r in records]
+    args.out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    if kept:
+        print(f"\n{len(kept)} earlier records kept, {len(records)} added")
     fresh = sum(r.input_tokens for r in records)
     cached = sum(r.cached_tokens for r in records)
     print(f"\n{len(records)} pairwise records -> {args.out}")
