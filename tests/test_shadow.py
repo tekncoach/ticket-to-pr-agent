@@ -644,3 +644,56 @@ def test_without_skip_done_a_run_starts_from_the_top_and_keeps_nothing():
     units = [{"request_id": f"u{i}"} for i in range(4)]
     run, kept = select_units(units, [{"request_id": "u0"}], 2, skip_done=False)
     assert [u["request_id"] for u in run] == ["u0", "u1"] and kept == []
+
+
+# --- precision, recall, and the shape of the spread ------------------------
+
+def test_precision_is_over_units_that_wrote_and_recall_over_every_scored_unit():
+    # A unit that wrote nothing has no files to be right about, so it cannot
+    # lower precision — but it found none of the files it was meant to, so it
+    # does lower recall. Reporting either alone hides the other.
+    from shadow.diff import summarise
+
+    hit = _record([CLONE + "a.py", CLONE + "stray.py"], ["a.py"])        # 1 found, 1 extra
+    silent = _record([], ["b.py", "c.py"])                                # wrote nothing
+    silent["request_id"] = "encode-httpx-2"
+    pr = summarise([hit, silent])["precision_recall"]
+    assert pr["precision"] == 0.5 and pr["precision_over_units"] == 1
+    assert pr["recall"] == round(1 / 3, 3) and pr["recall_over_units"] == 2
+
+
+def test_a_changelog_entry_does_not_cost_precision():
+    from shadow.diff import summarise
+
+    r = _record([CLONE + "a.py", CLONE + "CHANGELOG.md"], ["a.py"])
+    assert summarise([r])["precision_recall"]["precision"] == 1.0
+
+
+def test_a_stopped_run_that_wrote_still_counts_toward_precision():
+    # Same rule as safety: its edits are on disk.
+    from shadow.diff import summarise
+
+    r = _record([CLONE + "z.py"], ["a.py"], stopped_on="max_turns")
+    pr = summarise([r])["precision_recall"]
+    assert pr["precision"] == 0.0 and pr["precision_over_units"] == 1
+
+
+def test_a_histogram_keeps_every_value_and_its_last_bucket_is_open():
+    from shadow.diff import histogram
+
+    buckets = histogram([1, 9, 10, 25, 99], [0, 10, 20])
+    assert [b["n"] for b in buckets] == [2, 1, 2]
+    assert buckets[-1]["to"] is None
+    assert sum(b["n"] for b in buckets) == 5
+
+
+def test_cost_stays_none_without_a_price_and_is_computed_with_one():
+    # No hardcoded vendor price: it goes stale in silence. Given one, the
+    # arithmetic is checkable by hand: 1M in at $1 + 1M out at $5 = $6.
+    from shadow.diff import summarise
+
+    r = _record(["a.py"], ["a.py"])
+    r.update(input_tokens=1_000_000, output_tokens=1_000_000, cached_tokens=0)
+    assert summarise([r])["cost_usd"] is None
+    priced = summarise([r], prices={"input": 1.0, "output": 5.0, "cache_read": 0.1})
+    assert priced["cost_usd"]["total"] == 6.0

@@ -232,7 +232,7 @@ def classify(record: dict) -> dict:
     }
 
     return {"id": record["request_id"], "verdict": verdict, "hit": hit,
-            "unsafe": unsafe, "tags": tags(record),
+            "unsafe": unsafe, "tags": tags(record), "wrote": bool(touched),
             "missed": missed, "extra": extra,
             "stopped_on": proposal.get("stopped_on"),
             "baseline_action": baseline.get("action", "")}
@@ -253,7 +253,27 @@ def _swing(predicate, of) -> list[float] | None:
     return [round(max(agreed - 1, 0) / n, 3), round(min(agreed + 1, n) / n, 3)]
 
 
-def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
+def histogram(values: list[float], edges: list[float]) -> list[dict]:
+    """Counts per [lo, hi) bucket; the last bucket is open-ended.
+
+    Fixed edges rather than computed ones, so two runs can be laid side by
+    side. With a few dozen values a binning rule picked by the data would
+    move the bars more than the data does.
+    """
+    out = []
+    for i, lo in enumerate(edges):
+        hi = edges[i + 1] if i + 1 < len(edges) else None
+        n = sum(1 for v in values if v >= lo and (hi is None or v < hi))
+        out.append({"from": lo, "to": hi, "n": n})
+    return out
+
+
+LATENCY_EDGES_MS = [0, 10_000, 20_000, 30_000, 40_000, 50_000, 60_000]
+COST_EDGES_USD = [0, 0.01, 0.02, 0.03, 0.04, 0.05, 0.06, 0.08]
+
+
+def summarise(records: list[dict], adjudications: dict | None = None,
+              prices: dict | None = None) -> dict:
     adjudications = adjudications or {}
     rows = [classify(r) for r in records]
 
@@ -301,6 +321,43 @@ def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
             }
         return cells
     fresh = [r.get("input_tokens", 0) + r.get("output_tokens", 0) for r in records]
+
+    # Per-file precision and recall, micro-averaged over files. Precision is
+    # taken over units that wrote something (a unit that wrote nothing has no
+    # files to be right or wrong about); recall is taken over every scored
+    # unit, because a unit that wrote nothing found none of the files. Units
+    # stopped by a guard are in: their edits are on disk, same rule as safety.
+    comparable_rows = [r for r in rows if r["verdict"] not in ("baseline-unavailable", "wrong-tree")]
+    wrote_rows = [r for r in comparable_rows if r.get("wrote")]
+
+    def tally(group):
+        tp = sum(len(r["hit"]) for r in group)
+        fp = sum(len([f for f in r["extra"] if not f.endswith(NOISE)]) for r in group)
+        fn = sum(len(r["missed"]) for r in group)
+        return tp, fp, fn
+
+    tp_w, fp_w, _ = tally(wrote_rows)
+    tp_a, _, fn_a = tally(comparable_rows)
+    precision_recall = {
+        "precision": round(tp_w / (tp_w + fp_w), 3) if tp_w + fp_w else None,
+        "recall": round(tp_a / (tp_a + fn_a), 3) if tp_a + fn_a else None,
+        "precision_over_units": len(wrote_rows),
+        "recall_over_units": len(comparable_rows),
+        "files": {"found": tp_a, "extra": fp_w, "missed": fn_a},
+    }
+
+    # Cost needs a price, and the price is not ours to hardcode — a vendor
+    # price goes stale in silence. Given one, per-unit cost and its spread.
+    cost = None
+    if prices:
+        per_unit = [(r.get("input_tokens", 0) * prices["input"]
+                     + r.get("output_tokens", 0) * prices["output"]
+                     + r.get("cached_tokens", 0) * prices["cache_read"]) / 1e6
+                    for r in records]
+        cost = {"prices_usd_per_mtok": prices,
+                "mean": round(statistics.mean(per_unit), 4) if per_unit else None,
+                "total": round(sum(per_unit), 3),
+                "histogram": histogram(per_unit, COST_EDGES_USD)}
 
     return {
         # Stamped so the promotion path can name the run a row came from.
@@ -366,6 +423,9 @@ def summarise(records: list[dict], adjudications: dict | None = None) -> dict:
         # Cost stays None unless a price is configured, for the same reason the
         # eval metrics do: a hardcoded vendor price goes stale in silence.
         "cost_usd_per_unit": None,
+        "precision_recall": precision_recall,
+        "cost_usd": cost,
+        "latency_histogram_ms": histogram(latencies, LATENCY_EDGES_MS),
         "disagreements": [r for r in rows
                           if r["verdict"] in ("disagreed", "partial", "incomplete")][:5],
         "rows": rows,
@@ -379,6 +439,11 @@ def main() -> int:
     # Explicit rather than module-level, so a run can be pointed somewhere
     # else and a test never writes to the queue the repository keeps.
     parser.add_argument("--adjudications", type=Path, default=ADJUDICATIONS)
+    # USD per million tokens. No default on purpose: without them cost stays
+    # None, the same discipline as the eval metrics.
+    parser.add_argument("--price-in", type=float, default=None)
+    parser.add_argument("--price-out", type=float, default=None)
+    parser.add_argument("--price-cache", type=float, default=None)
     args = parser.parse_args()
 
     if not args.results.exists():
@@ -387,7 +452,10 @@ def main() -> int:
 
     records = [json.loads(l) for l in args.results.read_text(encoding="utf-8").splitlines() if l.strip()]
     adjudications = load_adjudications(args.adjudications)
-    summary = summarise(records, adjudications)
+    prices = None
+    if None not in (args.price_in, args.price_out, args.price_cache):
+        prices = {"input": args.price_in, "output": args.price_out, "cache_read": args.price_cache}
+    summary = summarise(records, adjudications, prices)
 
     queue = adjudication_queue(summary["rows"], adjudications)
     if queue:
@@ -410,6 +478,24 @@ def main() -> int:
           f"p95 {summary['latency_ms']['p95']}ms, max {summary['latency_ms']['max']}ms")
     for reason, count in summary["stopped_on"].items():
         print(f"  stopped on {reason}: {count}")
+
+    pr = summary["precision_recall"]
+    print(f"  files            precision {pr['precision']} over {pr['precision_over_units']} units that wrote, "
+          f"recall {pr['recall']} over {pr['recall_over_units']} scored  "
+          f"(found {pr['files']['found']}, extra {pr['files']['extra']}, missed {pr['files']['missed']})")
+
+    def bars(title, buckets, unit, scale):
+        print(f"\n  {title}")
+        top = max((b["n"] for b in buckets), default=0) or 1
+        for b in buckets:
+            hi = "+" if b["to"] is None else f"-{b['to'] / scale:g}"
+            print(f"    {b['from'] / scale:>5g}{hi:<6}{unit} {'#' * round(24 * b['n'] / top):<24} {b['n']}")
+
+    bars("latency per unit", summary["latency_histogram_ms"], "s", 1000)
+    if summary["cost_usd"]:
+        print(f"\n  cost: mean ${summary['cost_usd']['mean']}, total ${summary['cost_usd']['total']}"
+              f"  at {summary['cost_usd']['prices_usd_per_mtok']} per Mtok")
+        bars("cost per unit", summary["cost_usd"]["histogram"], "$", 1)
 
     safety = summary["safety"]
     print(f"\n  UNSAFE WRITE PROPOSALS  {len(safety['unsafe_units'])} of {safety['of']}"
