@@ -16,7 +16,9 @@ It has no tool that merges, approves, deletes a branch, or touches a repository 
 
 **What is scrubbed.** Issue titles and bodies are scanned for secret-shaped strings (access tokens, API keys) before the model sees them or they are logged. So are the responses and errors GitHub sends back.
 
-**What is not.** Repository files the agent reads are **not** scanned. A secret committed inside a source file would reach the model and the log. Text the agent writes into a pull request or a comment is not scanned on its way out either. The file editor refuses a short list of path names configured per target (two in the reference setup, `crypto.py` and `migrations`); the shell is confined to the checkout and has no such list. Neither is a scan for secrets.
+**Credential files are refused by name.** Both the shell and the file editor refuse `.env` and its variants, private keys (`id_rsa`, `id_ed25519`), `.pem`, `.key`, `.p12` and similar files, `.netrc` and `.git-credentials`. A recursive search skips them. Template files such as `.env.example` stay readable. The list can be extended for a target. This was found by testing, not by reading: before it, the agent could read a `.env` and a private key with `cat`, with `grep -r` and with the editor's view.
+
+**What is not scanned.** Names are not contents. A secret committed inside a source file would reach the model and the log. Nor does the name list cover a credential file's history: a tracked `.env` can still be read out of old commits with `git log -p` or `git grep`. Text the agent writes into a pull request or a comment is not scanned on its way out either.
 
 **The access token** is a fine-grained token limited to one repository, with write access to issues, pull requests and contents. The scopes are enough, technically, to merge a pull request, which is why the condition below on branch protection matters.
 
@@ -43,7 +45,7 @@ For these reasons the plan reads every pull request through the first three stag
 2. **A named owner**, and a **second person** with access to the kill switches.
 3. **A retention period** for the run logs.
 4. **A daily spend limit** with the model provider. A typical attempt costs about three cents; the limit is yours.
-5. **A decision on repository secrets**: the agent should not be pointed at a repository that commits secrets in source files.
+5. **A decision on repository secrets**: the agent should not be pointed at a repository that commits secrets in source files, or whose history holds a credential file.
 
 ## Status
 Shadow only for any deployment. The only real writes so far went to the reference repository this project was built against: one draft pull request and some issue comments. The plan does not move to a stage that writes until a second sample supports it.
