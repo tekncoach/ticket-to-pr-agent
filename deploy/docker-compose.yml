@@ -37,6 +37,11 @@ services:
       # Deliberately not defaulted to false anywhere in this file. Turning
       # writes on is a decision someone makes explicitly, on the host.
       SHADOW_MODE: ${SHADOW_MODE:-true}
+      # The other two switches. Listed here because compose passes the
+      # container only the variables it names: without these lines, setting
+      # them on the host would change nothing inside the container, silently.
+      AGENT_ENABLED: ${AGENT_ENABLED:-true}
+      DISABLED_TOOLS: ${DISABLED_TOOLS:-}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       TARGET_REPO: ${TARGET_REPO:-tekncoach/liberty-rider-myroadtrips}
       VECTOR_DB_PATH: /app/data/kb/kb.sqlite3

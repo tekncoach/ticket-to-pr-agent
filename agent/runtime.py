@@ -2,7 +2,7 @@
 from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any, Callable, Iterable
 import json, os, time, uuid
 from pathlib import Path
 
@@ -150,6 +150,10 @@ class AgentRuntime:
     # what makes the write gate a live switch rather than a value frozen when
     # the runtime was constructed — see agent.config.writes_allowed.
     allow_side_effects: bool | Callable[[], bool] = False
+    # Tool names an operator has switched off. Same shape and same reason as
+    # allow_side_effects: pass the function, not its value, so a change in the
+    # environment reaches a runtime that is already running.
+    disabled_tools: Iterable[str] | Callable[[], Iterable[str]] = ()
     # Policy guard, not performance: caps executed tool_use blocks per turn.
     # Calls past the cap still get a tool_result, just an error one —
     # dropping one trains Claude to stop using parallel calls at all.
@@ -482,6 +486,9 @@ class AgentRuntime:
                     if tool is None:                   # a hallucinated tool name
                         result = ToolResult(ok=False, error_code=str(
                             ToolError(ErrorClass.VALIDATION, f"unknown tool: {block.name}")))
+                    elif block.name in self._disabled_tools():
+                        result = ToolResult(ok=False, error_code=str(ToolError(
+                            ErrorClass.DENIED, f"tool disabled by operator: {block.name}")))
                     elif tool.side_effect and not self._writes_allowed():
                         result = ToolResult(ok=False, error_code=str(ToolError(
                             ErrorClass.DENIED, "side effects are not allowed in this run")))
@@ -597,6 +604,10 @@ class AgentRuntime:
     def _writes_allowed(self) -> bool:
         gate = self.allow_side_effects
         return gate() if callable(gate) else gate
+
+    def _disabled_tools(self) -> set[str]:
+        names = self.disabled_tools
+        return set(names() if callable(names) else names)
 
     @staticmethod
     def _validate_args(tool: Tool, args: dict) -> str | None:

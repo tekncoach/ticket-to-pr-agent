@@ -10,7 +10,7 @@ from __future__ import annotations
 import os
 
 from agent.event_sink import EventSink, JSONLFileSink, MultiSink, StdoutSink
-from agent.config import shadow_mode, writes_allowed
+from agent.config import disabled_tools, shadow_mode, writes_allowed
 from agent.runtime import AgentRuntime, Tool
 from rag.retrieve import GROUNDING
 from tools.bash import bash
@@ -125,6 +125,8 @@ def build_runtime(model: str | None = None) -> AgentRuntime:
         # The function, not its value: passing writes_allowed() here would
         # freeze the switch at construction, which is the bug this replaces.
         allow_side_effects=writes_allowed,
+        # Also the function, for the same reason.
+        disabled_tools=disabled_tools,
         thinking_enabled=THINKING_ENABLED, thinking_budget_tokens=THINKING_BUDGET_TOKENS,
         logger=build_logger(),
     )

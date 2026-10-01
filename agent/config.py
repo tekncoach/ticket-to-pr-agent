@@ -43,6 +43,31 @@ def writes_allowed() -> bool:
     return not shadow_mode()
 
 
+def agent_enabled() -> bool:
+    """Whether the agent may start a run at all. Read at CALL time.
+
+    The bigger switch: SHADOW_MODE stops writes and keeps the agent observing,
+    this one stops the agent, and the ticket goes back to whoever handled it
+    before. It fails closed. Only an unset variable or the exact value "true"
+    leaves the agent on; "false", "0", an empty string and a typo such as
+    "flase" all turn it off, because the person flipping it during an incident
+    is not the person who wrote it, and a switch that stays on after a
+    misspelt value has not worked and has not said so.
+    """
+    return os.environ.get("AGENT_ENABLED", "true").strip().lower() == "true"
+
+
+def disabled_tools() -> set[str]:
+    """Tools the operator has turned off, by name. Read at CALL time.
+
+    A comma-separated list, for the case where one tool is the problem and the
+    rest of the agent is not: open_pr misbehaving should not cost the agent its
+    ability to read a ticket. A name that matches no tool disables nothing, and
+    /health lists those so a typo is visible rather than silent.
+    """
+    return {name.strip() for name in os.environ.get("DISABLED_TOOLS", "").split(",") if name.strip()}
+
+
 # Per-run structured logs: one JSONL file per run_id, tmp/sessions/<run_id>.jsonl.
 # One project (this repo) -> one directory is enough; no <project>/<session>
 # nesting the way ~/.claude/projects/ needs, since that pattern exists to

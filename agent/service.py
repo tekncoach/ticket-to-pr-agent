@@ -20,7 +20,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
-from agent.config import SESSIONS_DIR, shadow_mode
+from agent.config import SESSIONS_DIR, agent_enabled, disabled_tools, shadow_mode
 from agent.errors import ErrorClass, classify
 from agent.consent import authorise, clear
 from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
@@ -225,14 +225,36 @@ def health() -> dict:
         # True reflects whether shadow mode is actually doing something, not
         # just declared: it is only meaningful if a write tool exists to gate.
         "shadow_enforced": shadow_mode() and any(t.side_effect for t in TOOLS.values()),
+        # The other two switches, read on every request for the same reason as
+        # shadow_mode: this is where an operator confirms a flip took effect.
+        "agent_enabled": agent_enabled(),
+        "disabled_tools": sorted(disabled_tools()),
+        # A name that matches no tool disables nothing, so a typo in the list
+        # would look like a working switch. Listed here, it cannot hide.
+        "disabled_tools_unknown": sorted(disabled_tools() - set(TOOLS)),
         "llm_ready": llm_ready(),
         "model": LLM_MODEL,
         "tools": sorted(TOOLS.keys()),
     }
 
 
+def _agent_off() -> JSONResponse | None:
+    """The operator's stop, checked before anything else a request would do.
+
+    Before the key check, before GitHub, before a runtime exists: an agent that
+    is switched off but still calls out to check a label is not off.
+    """
+    if agent_enabled():
+        return None
+    return JSONResponse(status_code=503, content={"error": (
+        "agent disabled by operator (AGENT_ENABLED is not true); "
+        "route this ticket to a person")})
+
+
 @app.post("/v1/chat")
 def chat(req: ChatRequest, request: Request):
+    if (off := _agent_off()) is not None:
+        return off
     if not llm_ready():
         return JSONResponse(
             status_code=503,
@@ -269,6 +291,8 @@ def run_ticket(req: RunRequest, request: Request):
     flushed line by line as it happens, so it is readable before the run ends.
     That is what lets a page show progress without any queue behind it.
     """
+    if (off := _agent_off()) is not None:
+        return off
     if not llm_ready():
         return JSONResponse(
             status_code=503,

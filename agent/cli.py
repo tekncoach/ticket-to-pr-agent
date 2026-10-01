@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import sys
 
+from agent.config import agent_enabled
 from agent.factory import build_runtime
 
 
@@ -21,6 +22,10 @@ def main() -> None:
     if len(sys.argv) < 2:
         print('usage: python -m agent.cli "<message>"', file=sys.stderr)
         raise SystemExit(1)
+
+    if not agent_enabled():
+        print("agent disabled by operator (AGENT_ENABLED is not true)", file=sys.stderr)
+        raise SystemExit(2)
 
     user_msg = sys.argv[1]
     result = build_runtime().run(user_msg)
