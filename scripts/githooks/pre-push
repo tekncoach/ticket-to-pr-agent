@@ -14,7 +14,12 @@ cd "$(git rev-parse --show-toplevel)"
 fail() { echo "pre-push: $1" >&2; echo "pre-push: push refused. --no-verify overrides." >&2; exit 1; }
 
 echo "pre-push: unit suite"
-make test >/dev/null 2>&1 || fail "the hermetic suite is red"
+# The output is kept and shown on failure: a refusal that does not say which
+# test failed cannot be acted on, and the reader's only move is --no-verify.
+if ! suite_out=$(make test 2>&1); then
+  printf '%s\n' "$suite_out" | tail -40 >&2
+  fail "the hermetic suite is red"
+fi
 
 echo "pre-push: frozen golden set"
 uv run python -m evals.freeze --check || fail "golden.jsonl has drifted from its lock"
