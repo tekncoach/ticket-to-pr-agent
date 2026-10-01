@@ -86,7 +86,7 @@ ssh ticket-to-pr-agent.exe.xyz 'set_switch() { f=~/app/.env; grep -q "^$1=" "$f"
 curl -s https://ticket-to-pr-agent.exe.xyz/health   # the field must read what you set
 ```
 
-`/health` is how you check it actually applied, rather than assuming. Recreating the container ends any run in progress, since `/v1/run` is synchronous. The helper above has been tested on a copy of `.env` and has not yet been run on this VM. The compose file lists each variable by name: a variable it does not list never reaches the container. `AGENT_ENABLED` and `DISABLED_TOOLS` fail closed (anything but `true` turns the agent off), and a misspelt tool name shows up under `disabled_tools_unknown`.
+`/health` is how you check it actually applied, rather than assuming. Recreating the container ends any run in progress, since `/v1/run` is synchronous. The helper above has been tested on a copy of `.env` and has not yet been run on this VM. The compose file lists each variable by name: a variable it does not list never reaches the container. All of them fail toward the safe state on a typo: writes are enabled only by exactly `SHADOW_MODE=false`, and anything but `true` turns `AGENT_ENABLED` off. A misspelt tool name in `DISABLED_TOOLS` shows up under `disabled_tools_unknown`.
 
 **This needs SSH access to the VM**, held by one person today, so it does not meet the bar of being usable by someone who is not the author. A platform with an environment-variable page would remove the requirement; the variables are the same.
 

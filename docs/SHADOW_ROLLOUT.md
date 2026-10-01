@@ -80,7 +80,7 @@ All are environment variables. Changing one needs the container recreated, not r
 | `DISABLED_TOOLS=open_pr,comment_on_ticket` | the named tools are refused as `denied: tool disabled by operator`; the rest of the agent works | `disabled_tools`, and `disabled_tools_unknown` for a misspelt name |
 | `LLM_MODEL=<model>` | the model fallback | `model` |
 
-`AGENT_ENABLED` and `DISABLED_TOOLS` fail closed: only an unset variable or exactly `true` leaves the agent on, so `flase` turns it off. `DISABLED_TOOLS` cannot fail closed on a misspelt name, which is what `disabled_tools_unknown` is for.
+All three fail toward the safe state on a malformed value. `AGENT_ENABLED`: only an unset variable or exactly `true` leaves the agent on, so `flase` turns it off. `SHADOW_MODE`: writes are enabled only by exactly `false`, so `ture` or an empty value leaves the agent in shadow. `DISABLED_TOOLS` cannot fail closed on a misspelt name, which is what `disabled_tools_unknown` is for.
 
 **Runbook.** From a machine with SSH access to the VM:
 
@@ -122,7 +122,7 @@ Every metric below is computed from fields the run trace already carries (`tool_
 | Customer code or secrets leave the environment | M | H | ticket text is redacted before the model; **repository files the agent reads are not**; see [`RISK-MEMO.md`](RISK-MEMO.md) |
 | Runaway cost | L | M | $0.033 per attempt; a guard-stopped run costs more than a finished one ($0.035 against $0.029), so a stop saves nothing; the customer sets a daily budget |
 | The kill switch cannot be reached when needed | M | H | single SSH holder today; second operator and a platform with an environment page before stage 2 |
-| `SHADOW_MODE` fails open on a malformed value | L | H | open: any value other than `true`, including a typo, turns writes on (`F51`); the proposed fix is to enable writes only on an explicit `false` |
+| A typo in a kill switch during an incident | M | H | `SHADOW_MODE` used to turn writes on for any value but `true` (`F51`); it now enables them only on an explicit `false`, and `AGENT_ENABLED` fails closed the same way. A misspelt tool name in `DISABLED_TOOLS` shows on `/health` |
 | A ticket labelled small is not | M | M | the 1-file, 20-line cap flags it; the reviewer reads it |
 
 ## Ask for stakeholders
@@ -136,4 +136,3 @@ Do **not** approve stage 1. Approve a second shadow sample: at least 50 single-f
 | `get_ci_status`, so the agent never learns whether CI went green | before stage 2 |
 | a second person with access to the switches | before stage 2 |
 | log retention (see the risk memo) | before the customer reads it |
-| `SHADOW_MODE` failing closed on a malformed value (`F51`) | now: needs one line and one changed test |
