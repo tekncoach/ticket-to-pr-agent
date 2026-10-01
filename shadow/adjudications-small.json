@@ -1,0 +1,32 @@
+{
+  "encode-httpx-1441": {
+    "winner": "baseline-correct",
+    "why": "Right file and the right package (asgi-lifespan), but the example imports `lifespan` from `asgi_lifespan`. The package's README exports `LifespanManager`; `lifespan` is the name a user gives their own app's lifespan function. The snippet would raise ImportError. The run was stopped by the duplicate-call guard.",
+    "verdict": "incomplete",
+    "hit": [
+      "docs/async.md"
+    ],
+    "missed": [],
+    "extra": []
+  },
+  "encode-httpx-1430": {
+    "winner": "agent-correct",
+    "why": "Both `trust_env` defaults changed from None to True in `_config.py`, identical to the engineer's change. The run was stopped by the duplicate-call guard after the edits, so the metric counts a correct fix as incomplete.",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_config.py"
+    ],
+    "missed": [],
+    "extra": []
+  },
+  "encode-httpx-1175": {
+    "winner": "agent-correct",
+    "why": "A valid example of `httpcore.SyncConnectionPool(uds=...)` with the client built from it, in the right section of `docs/advanced.md`. Simpler than the engineer's, which also sets the pool limits. Two overlapping `str_replace` calls targeted the same region, and shadow mode cannot show whether the second would have applied after the first. Stopped at the turn limit.",
+    "verdict": "incomplete",
+    "hit": [
+      "docs/advanced.md"
+    ],
+    "missed": [],
+    "extra": []
+  }
+}
