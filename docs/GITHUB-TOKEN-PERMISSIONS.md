@@ -6,9 +6,9 @@
 
 | Scope | Level | Used by |
 |---|---|---|
-| Issues | Read and write | `fetch_ticket` (read, built) · `comment_on_ticket` (write, planned) |
-| Pull requests | Read and write | `open_pr` (planned) |
-| Contents | Read and write | `open_pr` — pushes a branch (planned) |
+| Issues | Read and write | `fetch_ticket` (read, built) · `comment_on_ticket` (write, built) |
+| Pull requests | Read and write | `open_pr` (built) |
+| Contents | Read and write | `open_pr` — pushes a branch (built) |
 | Actions | Read-only | `get_ci_status` (planned) |
 | Metadata | Read-only | Automatic on every fine-grained token — cannot be unchecked |
 | Code quality, Discussions, Merge queues, Secret scanning alerts, Code scanning alerts, Dependabot alerts | Various | Not used by any tool in this repo. Left over from the GitHub UI's suggested defaults at creation time — harmless (nothing here calls those endpoints) but broader than needed. |
