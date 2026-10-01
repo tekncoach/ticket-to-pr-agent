@@ -95,7 +95,9 @@ def load_tools(spec: str | None) -> LoadedTools:
                 tool = _import(module, attr)
             except ImportError as e:
                 if not optional:
-                    raise
+                    raise ToolConfigError(
+                        f"built-in tool {ref!r} cannot be imported "
+                        f"({type(e).__name__}: {e})") from e
                 unavailable[ref] = f"{type(e).__name__}: {e}"
                 continue
             registered = ref

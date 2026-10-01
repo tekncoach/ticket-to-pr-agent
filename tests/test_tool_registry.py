@@ -203,3 +203,13 @@ def test_the_golden_runner_refuses_a_reduced_tool_set(monkeypatch):
     monkeypatch.setattr(runner, "TOOLS", {"bash": runner.TOOLS["bash"]})
     with pytest.raises(RuntimeError, match="AGENT_TOOLS"):
         runner.require_full_tool_set()
+
+
+def test_a_builtin_that_cannot_import_stops_the_start_with_the_same_error(monkeypatch):
+    # Same failure class as a typo or a broken plugin: one error type to catch,
+    # and the message names the entry. A bare ImportError named only a module.
+    monkeypatch.setitem(__import__("agent.tool_registry", fromlist=["x"])._BUILTIN_SPECS,
+                        "bash", ("no_such_module", "bash"))
+    with pytest.raises(ToolConfigError, match="built-in tool 'bash'"):
+        load_tools("bash")
+    assert "bash" in load_tools("bash?").unavailable
