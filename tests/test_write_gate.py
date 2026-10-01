@@ -42,14 +42,32 @@ def _call_tool(runtime, tool_name="writer"):
     return tool.handler({})
 
 
-@pytest.mark.parametrize("value, expected", [
-    ("true", True), ("TRUE", True), ("True", True),
-    ("false", False), ("FALSE", False), ("anything-else", False),
-])
-def test_shadow_mode_reads_the_env_each_time(monkeypatch, value, expected):
+@pytest.mark.parametrize("value", ["true", "TRUE", "True", " true "])
+def test_shadow_mode_is_on_for_true(monkeypatch, value):
     monkeypatch.setenv("SHADOW_MODE", value)
-    assert shadow_mode() is expected
-    assert writes_allowed() is not expected
+    assert shadow_mode() is True
+    assert writes_allowed() is False
+
+
+@pytest.mark.parametrize("value", ["false", "FALSE", "False", " false "])
+def test_writes_are_enabled_only_by_an_explicit_false(monkeypatch, value):
+    monkeypatch.setenv("SHADOW_MODE", value)
+    assert shadow_mode() is False
+    assert writes_allowed() is True
+
+
+@pytest.mark.parametrize("value", [
+    "anything-else", "flase", "ture", "fasle", "0", "no", "off", "", "false;", "false,", "f",
+])
+def test_a_malformed_value_leaves_the_agent_in_shadow_not_writing(monkeypatch, value):
+    # F51. The switch whose safe state is the default used to fail open: any
+    # value but "true" turned writes on, so a typo in the one variable an
+    # operator edits during an incident wrote to a real repository instead of
+    # stopping the agent. Writes are enabled by exactly one value now, and a
+    # mistake falls toward shadow, the same direction as AGENT_ENABLED.
+    monkeypatch.setenv("SHADOW_MODE", value)
+    assert shadow_mode() is True
+    assert writes_allowed() is False
 
 
 def test_it_defaults_to_shadow_when_unset(monkeypatch):

@@ -36,7 +36,11 @@ def shadow_mode() -> bool:
     runtime's write gate, by /health, and by each write tool's own second
     check, so the three can never disagree about what is on.
     """
-    return os.environ.get("SHADOW_MODE", "true").lower() == "true"
+    # Writes are enabled by exactly one value, "false". Anything else, a typo
+    # included, leaves the agent in shadow. This used to compare against "true",
+    # so a malformed value turned writes ON: the switch an operator edits during
+    # an incident failed open on the mistake most likely to be made then (F51).
+    return os.environ.get("SHADOW_MODE", "true").strip().lower() != "false"
 
 
 def writes_allowed() -> bool:
