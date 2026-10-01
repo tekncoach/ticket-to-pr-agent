@@ -14,12 +14,13 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import jsonschema
 
 from agent.secrets_redaction import redact_secrets
-from evals.schema import CaseScore, ForbiddenBehavior, GoldenCase
+from evals.schema import CaseScore, GoldenCase
 
 # What a run looks like: AgentRuntime.run()'s return value, or the same shape
 # rebuilt from a trace file.

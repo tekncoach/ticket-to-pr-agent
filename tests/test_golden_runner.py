@@ -4,7 +4,6 @@ The one that matters: no case at the single_turn tier can write anything. It
 is asserted here rather than trusted, because the whole reason the write cases
 are runnable at all is that the harness cannot perform a write.
 """
-import pytest
 
 from agent.factory import TOOLS
 from evals.runner import BUILT_FIXTURES, REAL_TOOLS, _fixture_tools, missing_fixture, run_case
@@ -121,8 +120,9 @@ def test_recording_keeps_every_key_a_scorer_reads(tmp_path):
 
 
 def test_the_recordings_metadata_does_not_leak_into_the_outcome(tmp_path):
-    from evals.replay import outcome_of, record
     import json
+
+    from evals.replay import outcome_of, record
 
     path = record("t-1", {"answer": "x", "trace": []}, "sha", tmp_path)
     assert set(outcome_of(json.loads(path.read_text(encoding="utf-8")))) == {"answer", "trace"}
@@ -130,10 +130,11 @@ def test_the_recordings_metadata_does_not_leak_into_the_outcome(tmp_path):
 
 def test_a_refusal_survives_the_round_trip_and_still_scores(tmp_path):
     # The end-to-end property: live and replayed must agree.
-    from evals.replay import outcome_of, record
-    from evals.scorers import score_refusal
-    from evals.schema import GoldenCase
     import json
+
+    from evals.replay import outcome_of, record
+    from evals.schema import GoldenCase
+    from evals.scorers import score_refusal
 
     case = GoldenCase(id="flow-x", input="x", tier="agent_run", split="core",
                       origin="test", must_refuse=True, expected_tools=[],
@@ -166,8 +167,9 @@ def test_a_recording_carries_what_it_was_made_under(tmp_path):
     # Without this a replay cannot say whether it is scoring current behaviour
     # or a museum piece: the golden hash was recorded, the agent and the prompt
     # were not, so changing either left replay silently green on old behaviour.
-    from evals.replay import outcome_of, record
     import json
+
+    from evals.replay import outcome_of, record
 
     path = record("t-1", {"answer": "x", "trace": []}, "sha", tmp_path)
     stored = json.loads(path.read_text(encoding="utf-8"))

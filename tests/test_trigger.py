@@ -12,8 +12,8 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
 from agent.service import app
+from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
 from tools.http_client import ResilientClient
 
 FAKE_TOKEN = "github_pat_TOTALLY_FAKE_TEST_TOKEN_never_real"

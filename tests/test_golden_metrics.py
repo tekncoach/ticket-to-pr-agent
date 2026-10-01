@@ -4,7 +4,6 @@ The rule the whole module rests on: a number that cannot be computed is None,
 never a zero and never a default. A gate reading 0.0 where the truth is
 "nobody measured" blocks a release for a reason that does not exist.
 """
-import pytest
 
 from evals.metrics import case_facts, percentile, spread, summarize
 from evals.schema import CaseScore, GoldenCase

@@ -1,10 +1,15 @@
 # agent/runtime.py
 from __future__ import annotations
+
+import json
+import os
+import time
+import uuid
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Iterable
-import json, os, time, uuid
+from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import anthropic
 import jsonschema
@@ -56,7 +61,7 @@ def _classify_api_error(exc: anthropic.APIError) -> ErrorClass:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _cost_usd(model: str, input_tokens: int, output_tokens: int) -> float | None:

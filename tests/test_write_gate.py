@@ -137,11 +137,10 @@ def test_a_write_tool_refuses_on_its_own_even_if_the_gate_is_opened(monkeypatch)
     # itself, to start writing to a real repository.
     monkeypatch.setenv("SHADOW_MODE", "true")
     monkeypatch.setenv("GITHUB_TOKEN", "github_pat_fake")
-    from tools.open_pr import open_pr
-
     # open_pr re-reads the agent:ready contract before writing, so consent has
     # to be granted here for shadow mode to be the thing under test.
     from agent.runtime import ToolResult as _TR
+    from tools.open_pr import open_pr
     with patch("tools.open_pr._changed_files", return_value=["app.py"]), \
          patch("tools.open_pr.check_ready", return_value=_TR(ok=True, data={"number": 1})), \
          patch("tools.open_pr._build_client") as client:

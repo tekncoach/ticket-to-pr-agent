@@ -7,10 +7,16 @@ must fail loudly here, not score silently as a behaviour nobody implemented.
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from evals.schema import (
-    ForbiddenBehavior, GoldenCase, ToolName,
-    GOLDEN_PATH, content_hash, load_golden, split_counts,
+    GOLDEN_PATH,
+    ForbiddenBehavior,
+    GoldenCase,
+    ToolName,
+    content_hash,
+    load_golden,
+    split_counts,
 )
 
 LOCK_PATH = GOLDEN_PATH.parent / "golden.lock.json"
@@ -74,12 +80,12 @@ def test_the_set_keeps_cases_this_system_currently_fails():
 
 
 def test_an_unknown_forbidden_behaviour_is_refused():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         GoldenCase.model_validate(_mutate(forbidden_behaviors=["be_unhelpful"]))
 
 
 def test_an_unregistered_tool_name_is_refused():
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         GoldenCase.model_validate(_mutate(expected_tools=["deploy_to_prod"]))
 
 
@@ -101,7 +107,7 @@ def test_a_case_that_asserts_nothing_is_refused():
 def test_an_unknown_setup_key_is_refused():
     # extra="forbid": a precondition the harness will never read is worse than
     # no precondition, because the case looks configured.
-    with pytest.raises(Exception):
+    with pytest.raises(ValidationError):
         GoldenCase.model_validate(_mutate(setup={"temperature": 0}))
 
 

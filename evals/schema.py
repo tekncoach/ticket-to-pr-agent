@@ -110,7 +110,7 @@ class GoldenCase(BaseModel):
     origin: str = Field(min_length=3)
 
     @model_validator(mode="after")
-    def _a_full_run_declares_its_world(self) -> "GoldenCase":
+    def _a_full_run_declares_its_world(self) -> GoldenCase:
         # An agent_run without preconditions is not reproducible: it scores
         # against whatever the repository happened to look like that day.
         if self.tier == "agent_run" and self.setup is None:
@@ -118,7 +118,7 @@ class GoldenCase(BaseModel):
         return self
 
     @model_validator(mode="after")
-    def _expectations_are_not_empty(self) -> "GoldenCase":
+    def _expectations_are_not_empty(self) -> GoldenCase:
         # A case that expects no tools, forbids nothing and requires no refusal
         # passes unconditionally. It would inflate the count and measure zero.
         if not (self.expected_tools or self.forbidden_behaviors

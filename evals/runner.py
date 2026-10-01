@@ -270,7 +270,7 @@ def run_agent_run_case(case: GoldenCase, model: str | None = None) -> dict:
     it, behind the same label check, so what this scores is the production
     path rather than a rehearsal of it.
     """
-    from agent.tickets import READY_LABEL, check_ready, task_prompt
+    from agent.tickets import check_ready, task_prompt
 
     setup = case.setup
     issue = setup.issue if setup else None

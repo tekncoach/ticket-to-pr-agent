@@ -132,6 +132,7 @@ def test_the_operator_can_add_names_for_a_target(monkeypatch):
     # The list is per target: a repository's secrets are not all called .env.
     monkeypatch.setenv("SENSITIVE_FILES_EXTRA", "vault.token,*.secret")
     import importlib
+
     import agent.config
     import agent.sensitive_files
     importlib.reload(agent.config)

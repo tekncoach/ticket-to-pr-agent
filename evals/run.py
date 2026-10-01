@@ -13,13 +13,14 @@ import argparse
 import hashlib
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from agent.factory import SYSTEM_PROMPT
 from evals.gates import check_gates, load_gates
 from evals.runner import run_suite
 from evals.schema import content_hash, load_golden
+
 
 # Overridable so a gate run does not dirty the working tree. The pre-push hook
 # runs on every push, and writing a report into the repository each time left
@@ -99,7 +100,7 @@ def main() -> int:
     ok, gate_results = check_gates(metrics, gates)
 
     report = {
-        "run_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        "run_at": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "golden_sha256": content_hash(),
         "model": args.model or os.environ.get("LLM_MODEL", "claude-haiku-4-5"),
         # What the run stood on. A delta without these invites the wrong fix:

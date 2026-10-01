@@ -193,9 +193,10 @@ def test_the_shape_decides_which_triage_runs(tmp_path):
     # An eval report carries cases with a pass field; a shadow summary carries
     # verdicts and a completion rate. Told apart by what they hold, not a flag.
     import json
-    from evals.promote import main
     import sys
     from unittest.mock import patch
+
+    from evals.promote import main
 
     path = tmp_path / "summary.json"
     path.write_text(json.dumps(_shadow_summary()))

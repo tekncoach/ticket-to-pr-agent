@@ -26,7 +26,7 @@ from pathlib import Path
 import anthropic
 
 from evals.runner import missing_fixture, run_case
-from evals.schema import GoldenCase, JUDGE, load_golden
+from evals.schema import JUDGE, GoldenCase, load_golden
 from evals.scorers import CITATION_RE, clamp_faithfulness, judge_prompt
 
 HERE = Path(__file__).parent

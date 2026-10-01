@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from agent.factory import TOOLS
@@ -36,10 +36,10 @@ TRACES_DIR = Path(__file__).parent / "traces"
 def provenance() -> dict:
     """What a recording was made under. Without it a replay cannot say whether
     it is scoring current behaviour or a museum piece."""
-    from evals.run import _agent_sha, _corpus_sha
     import hashlib
 
     from agent.factory import SYSTEM_PROMPT
+    from evals.run import _agent_sha, _corpus_sha
 
     return {
         "agent_sha": _agent_sha(),
@@ -62,7 +62,7 @@ def record(case_id: str, outcome: dict, golden_sha: str,
     path.write_text(json.dumps({
         **outcome,
         "case_id": case_id,
-        "recorded_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        "recorded_at": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "golden_sha256": golden_sha,
         **provenance(),
     }, ensure_ascii=False) + "\n", encoding="utf-8")

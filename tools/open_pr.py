@@ -33,9 +33,9 @@ import subprocess
 
 from agent.config import REPO, WORKSPACE, shadow_mode
 from agent.errors import ErrorClass, ToolError
-from agent.tickets import check_ready
 from agent.runtime import Tool, ToolResult
 from agent.secrets_redaction import redact_secrets
+from agent.tickets import check_ready
 from tools.http_client import ResilientClient
 
 GITHUB_API = "https://api.github.com"

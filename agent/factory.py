@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import os
 
+from agent.config import disabled_tools, writes_allowed
 from agent.event_sink import EventSink, JSONLFileSink, MultiSink, StdoutSink
-from agent.config import disabled_tools, shadow_mode, writes_allowed
 from agent.runtime import AgentRuntime, Tool
 from rag.retrieve import GROUNDING
 from tools.bash import bash

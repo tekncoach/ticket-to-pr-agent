@@ -14,7 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -29,7 +29,7 @@ def gh(path: str, jq: str | None = None) -> str:
 def snapshot(repo: str, issues: list[int]) -> dict:
     """Everything a write by this agent would move, counted at the source."""
     return {
-        "taken_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+        "taken_at": datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ"),
         "repo": repo,
         "comments": {str(n): gh(f"repos/{repo}/issues/{n}/comments?per_page=100", "length")
                      for n in issues},

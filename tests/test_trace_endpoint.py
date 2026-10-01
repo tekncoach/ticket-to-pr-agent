@@ -159,7 +159,8 @@ def test_recent_runs_are_listed_newest_first(client):
     for name, ts in [("aa11", "2026-09-14T10:00:00"), ("bb22", "2026-09-14T12:00:00")]:
         _write_trace(sessions, name, [{"event": "llm_call", "turn": 0, "ts": ts,
                                        "cost_usd": 0.002}, {"event": "final", "turn": 0}])
-    import os, time
+    import os
+    import time
     os.utime(sessions / "bb22.jsonl", (time.time(), time.time()))
 
     runs = api.get("/v1/runs").json()["runs"]

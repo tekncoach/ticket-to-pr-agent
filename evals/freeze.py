@@ -11,7 +11,6 @@ import argparse
 import json
 from collections import Counter
 from datetime import date
-from pathlib import Path
 
 from evals.schema import GOLDEN_PATH, content_hash, load_golden, split_counts
 

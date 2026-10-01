@@ -5,7 +5,6 @@ range, and a threshold with nothing to compare against is skipped rather than
 passed. A gate reporting green for checks it never ran is worse than no gate,
 because someone believes it.
 """
-import pytest
 import yaml
 
 from evals.gates import GATES_PATH, check_gates, load_gates
@@ -132,6 +131,7 @@ def test_the_behaviours_with_no_detector_are_named_as_risk_not_omitted():
     # behaviour nothing emits cannot fire — but leaving them out silently is
     # how an unmitigated gap reads as covered.
     import yaml as _yaml
+
     from evals.scorers import JUDGE_ONLY
 
     config = _yaml.safe_load(GATES_PATH.read_text(encoding="utf-8"))

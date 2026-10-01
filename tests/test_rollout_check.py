@@ -197,6 +197,7 @@ def test_a_failed_notification_does_not_hide_the_trip(tmp_path, capsys):
     # The exit code is the primary signal. A dead webhook must not turn a tripped
     # trigger into a quiet success, and must say it could not tell anyone.
     import httpx
+
     from agent.rollout_check import main
     transport = httpx.MockTransport(lambda request: httpx.Response(500))
     code = main([str(_tripped_dir(tmp_path)), "--notify-url", "https://alerts.example/hook"],

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -55,7 +55,7 @@ class Chunk(BaseModel):
 def chunk_markdown(path: Path, max_chars: int = 2200, overlap: int = 300, title: str | None = None) -> list[Chunk]:
     text = path.read_text()
     title = title or path.stem
-    updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+    updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
 
     headings = list(_HEADING_RE.finditer(text))
     if not headings:
@@ -106,7 +106,7 @@ def chunk_pdf(path: Path, max_chars: int = 2200, overlap: int = 300, title: str 
 
     reader = PdfReader(path)
     title = title or path.stem
-    updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc).isoformat()
+    updated_at = datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).isoformat()
 
     chunks: list[Chunk] = []
     for page_idx, page in enumerate(reader.pages):
@@ -152,7 +152,7 @@ def embed_and_upsert(chunks: list[Chunk], collection: str) -> int:
 
     db = get_db()
     count = 0
-    for chunk, vector in zip(chunks, vectors):
+    for chunk, vector in zip(chunks, vectors, strict=True):
         cur = db.execute(
             "INSERT OR REPLACE INTO chunk_meta "
             "(chunk_id, text, source, title, section, updated_at, acl, collection) "

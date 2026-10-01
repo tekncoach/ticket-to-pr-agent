@@ -19,7 +19,6 @@ from agent.config import agent_enabled, disabled_tools
 from agent.event_sink import NullSink
 from agent.runtime import AgentRuntime, Tool, ToolResult
 
-
 # --- the values ------------------------------------------------------------
 
 def test_the_agent_is_enabled_when_nothing_is_set(monkeypatch):
@@ -206,6 +205,7 @@ def test_compose_hands_both_switches_to_the_container():
     # to the code and not to this list sets it on the host and changes nothing
     # inside, which is a kill switch that does nothing and says nothing.
     from pathlib import Path
+
     import yaml
 
     compose = yaml.safe_load(

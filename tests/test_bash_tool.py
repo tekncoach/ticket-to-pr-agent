@@ -6,8 +6,9 @@ target repo checkout. No LLM call, no live service, no key required.
 Written to answer one question: which test fails if bash's
 allowlist/pipeline guard regresses? This one.
 """
-import pytest
 from unittest.mock import patch
+
+import pytest
 
 from agent.errors import ErrorClass, classify, is_retryable
 from tools.bash import bash

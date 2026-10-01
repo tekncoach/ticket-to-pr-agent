@@ -13,7 +13,6 @@ from __future__ import annotations
 import json
 import re
 import uuid
-
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -21,11 +20,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from agent.config import SESSIONS_DIR, agent_enabled, disabled_tools, shadow_mode
-from agent.errors import ErrorClass, classify
 from agent.consent import authorise, clear
-from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
+from agent.errors import ErrorClass, classify
 from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
 from agent.runtime import AgentRuntime
+from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
 
 # How a run ended, in the trace's own vocabulary. "incomplete" is what a
 # crashed or still-running run looks like, and saying so beats implying it

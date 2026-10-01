@@ -284,13 +284,14 @@ def test_reporting_is_not_gated_the_way_writing_is():
     # comment_on_ticket is how the agent reports, including reporting that it
     # stopped. Gating the report as well would make a withdrawal silent, which
     # is worse than the write it prevents.
-    import inspect
-    from tools import comment_on_ticket as reporter
     # A call, not a mention: grepping the whole source made a comment
     # explaining why the gate is absent fail the test asserting it is absent.
     # Parsed instead, so prose about the decision is allowed and the decision
     # itself is still enforced.
     import ast
+    import inspect
+
+    from tools import comment_on_ticket as reporter
 
     tree = ast.parse(inspect.getsource(reporter))
     called = {node.func.id for node in ast.walk(tree)

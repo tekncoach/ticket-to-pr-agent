@@ -55,7 +55,9 @@ def main() -> None:
 
     manifest = _load_manifest()
     if any(e.get("path") == str(path) for e in manifest):
-        raise SystemExit(f"{path} is already in the manifest — edit data/kb/manifest.json directly instead of adding a duplicate.")
+        raise SystemExit(
+            f"{path} is already in the manifest — edit data/kb/manifest.json directly "
+            "instead of adding a duplicate.")
 
     title = args.title or path.stem
     manifest.append({

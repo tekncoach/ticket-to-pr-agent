@@ -318,7 +318,7 @@ def _handler(arguments: dict) -> ToolResult:
 
     output, returncode = "", None
     deadline = time.monotonic() + _TIMEOUT_S
-    for (operator, _), stages in zip(chain, validated):
+    for (operator, _), stages in zip(chain, validated, strict=True):
         if not _should_run(operator, returncode):
             continue
         remaining = deadline - time.monotonic()

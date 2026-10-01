@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -101,7 +102,6 @@ def checkout_base(target: Path, base_sha: str) -> str | None:
     return None
 
 # Redaction beyond secrets: an issue body is written by a member of the public.
-import re
 
 EMAIL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 # Greedy on the prefix: an earlier version matched from the third group on and

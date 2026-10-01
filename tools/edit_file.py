@@ -24,10 +24,10 @@ import re
 from pathlib import Path
 
 from agent.config import AUTH_SENSITIVE_SYMBOLS, WORKSPACE
-from agent.errors import ErrorClass, ToolError
 from agent.consent import authorised_issue
-from agent.sensitive_files import sensitive_pattern
+from agent.errors import ErrorClass, ToolError
 from agent.runtime import Tool, ToolResult
+from agent.sensitive_files import sensitive_pattern
 from agent.tickets import check_ready
 from agent.workspace_guard import resolve_within_workspace
 

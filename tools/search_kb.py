@@ -33,7 +33,8 @@ def _handler(arguments: dict) -> ToolResult:
         return ToolResult(ok=False, error_code=str(ToolError(ErrorClass.VALIDATION, "missing query")))
 
     filters = dict(arguments.get("filters") or {})
-    filters.pop("acl", None)  # defense in depth: never trust a caller-supplied value, even if the schema is ever loosened
+    # Defense in depth: never trust a caller-supplied value, even if the schema is ever loosened.
+    filters.pop("acl", None)
     filters["acl"] = DEFAULT_ACL
 
     try:
