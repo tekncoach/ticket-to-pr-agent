@@ -1,5 +1,7 @@
 # Failure modes — first full pass of golden.jsonl v1
 
+> **A snapshot of the first full pass, 2026-09-15.** It stops at F13 on purpose, and its figures are those of that run. The living taxonomy is [`failure-modes.csv`](failure-modes.csv): `make modes` prints where every mode stands, and `make modes CHECK=1` refuses a mode marked closed without a test that exists.
+
 `claude-haiku-4-5`, 2026-09-15, golden set `9c9ed09d`. Raw scores in [`results/`](results/), the sheet itself as [`failure-modes.csv`](failure-modes.csv) — one row per case, openable in a spreadsheet, and checked against the runs it names so it cannot drift from them. This page is the reading of it.
 
 **31 of 44 scored cases passed.** 6 agent_run cases were not run (dollars and minutes, on demand), 2 were unrunnable because their fixture is not built.
