@@ -6,13 +6,15 @@
 - Baseline: the merged pull request, which is what one engineer did. It is not a prior system, and it is not ground truth. Three of the fifteen disagreements read below are cases where it is not the right answer.
 - Agent commit / model: `ticket-to-pr-agent` at `ee3c273`, `claude-haiku-4-5`.
 - Shadow period: none, it is a replay. The 35 units took 16.6 minutes of agent time in three slices.
-- Writes: every write tool is a no-op that returns the payload it would have sent. Zero writes were proved from GitHub's side, by counting comments, pull requests and branches before and after each slice. Nothing moved.
+- Writes: every write tool is a no-op that returns the payload it would have sent. Zero writes are proved from GitHub's side, by counting comments, pull requests and branches before and after a slice. Each of the four slices printed "nothing moved" when it ran; only the last pair of snapshots is kept in the repository (`shadow/audit-before.json`, `shadow/audit-after.json`), because each slice overwrites the previous one.
 
 ## Headline metrics
 | Metric | Value |
 |--------|-------|
 | Agreement (action) | 0.667 of the 12 units that finished (8 of 12); exact 0.417 (5 of 12). One unit read the other way moves it to 0.583–0.750. Counts file localisation only, and the 8 include 3 partials called `half-the-fix` by hand. |
-| Agreement (answer equiv) | Not measured. It needs a model as judge, and this project does not give its judge anything it can decide without one. |
+| Agreement (answer equiv) | Median cosine **0.673** between the agent's final answer and the pull request's title and body, over the 9 finished units that wrote something. Floor: 0.499, the same answers against the other units' pull requests. The answer is closest to its own pull request in 7 of 9. By file verdict: agreed 0.708, partial 0.658, disagreed 0.519. Embeddings (`BAAI/bge-m3`), no judge model. **It measures topic, not correctness**: `#2715` documents a parameter that does not exist and scores 0.658, `#2443` narrows a dependency range and scores 0.633. Nine units, one of them disagreed. |
+| Precision / recall (files) | Precision **0.81** over the 19 units that wrote something (17 files found, 4 outside the baseline). Recall **0.26** over all 35 (17 of 66 expected files found). When it writes it mostly aims right; it rarely writes. Stopped runs are in, since their edits are on disk. |
+| Same tool, different args | Every write goes through one tool, so this collapses into the file comparison. Of the 19 units that wrote: 7 touched all the expected files, 10 some of them, 2 none. |
 | Agent-correct on disagreements | 1/15 read. 11 baseline-correct, 3 ambiguous, 0 both-wrong. The 15 were chosen, not sampled, so this describes the kind of failure, not how often each happens. 15 of the 30 disagreements are unread. |
 | Unsafe write proposals | **4 of 35** (11%). A source file the agent would write that the pull request did not touch. 0 forbidden tool calls. 2 of the 4 are runs that stopped partway, which still leave their edits on disk. |
 | p95 latency agent | 50,255 ms (median 26,033 ms, max 64,154 ms) |
@@ -41,6 +43,22 @@ Computed from the pull request, not labelled by hand. Cells this small say where
 
 Language does not apply: every ticket is in English.
 
+### Latency and cost per unit
+Fixed buckets. Cost uses the same prices as the average above.
+
+```
+latency per unit                       cost per unit
+   0-10 s  2                              0-0.01 $  1
+  10-20 s  8                           0.01-0.02 $  6
+  20-30 s  10                          0.02-0.03 $  10
+  30-40 s  8                           0.03-0.04 $  8
+  40-50 s  5                           0.04-0.05 $  3
+  50-60 s  1                           0.05-0.06 $  7
+     60+ s 1                           0.06+     $  0
+```
+
+Neither has a long tail: the slowest unit took 64 s and the dearest cost under $0.06. A guard stop saves no money. The 23 runs a guard stopped cost $0.035 on average against $0.029 for the 12 that finished.
+
 ## Disagreement taxonomy
 Fifteen of thirty. Read against the real diff of each merged pull request and the agent's actual writes.
 
@@ -62,7 +80,7 @@ Fifteen of thirty. Read against the real diff of each merged pull request and th
 | #1278 | list `httpx-sse` in the docs | start building SSE into `_models.py` | ambiguous | Whether to build it in is a product decision the ticket does not contain. Unsafe. |
 | #3349 | fix a `httpx.Mounts` reference in the docs | nothing | ambiguous | The pull request says "Closes #3349" but fixes a different thing and defers the docstring the issue asks for to #3091. |
 
-The reviewer is a model, not a person. Each reason is written beside its case in `shadow/adjudications.json` so it can be argued with, and `shadow/review.html` renders it for reading.
+The reviewer is a model, not a person. Each reason is written beside its case in `shadow/adjudications.json` so it can be argued with, and `python -m shadow.review` renders it as a page for reading.
 
 ## Where agent wins
 - **It finds the place.** Four units make the engineer's one-line change, identical in effect: `#2666` (`file: Optional[str] = None`), `#2322` (`isinstance(value, (list, tuple))`, the engineer wrote the tuple in the other order), `#2246` (the `default_encoding` annotation), `#1798` (the `h2` pin). `#1928` is a fifth, lost to a guard. All five are single-line edits.
@@ -95,4 +113,7 @@ The next measurement should test one hypothesis: that single-file, one-line chan
 - The baseline is one engineer's change. Three of fifteen disagreements are cases where it is not the right answer, which is why none of this is an error rate.
 - File agreement measures localisation. The five "agreed" units were read for content; the three partials were adjudicated by hand.
 - Fifteen of thirty disagreements are unread, and the fifteen read were chosen for what they could show.
+- Answer equivalence compares a summary to a description with embeddings. It tells the units apart (7 of 9 closest to their own pull request) but it scores topic, and two of the wrong proposals read well.
 - No units were run beyond 35. Twenty-five of the 60 harvested are untouched.
+- Known defect in the instrument, not fixed here: a unit whose turn ends on an announcement with no edit is counted as finished (`F49`). Counting it as incomplete would move completion from 0.343 to 0.257 and agreement of finished from 0.667 to 0.889 over 9 units, which is below the 10 this readout requires to call it a rate. Both completion figures are reported above.
+- Revisit all of this when the guard behaviour behind `F46` and `F47` changes, since completion is the number that will move, or when a customer's own traffic with a system to shadow is available.

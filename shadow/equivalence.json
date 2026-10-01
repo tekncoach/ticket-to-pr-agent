@@ -1,0 +1,77 @@
+{
+  "model": "BAAI/bge-m3",
+  "units": 9,
+  "median_cosine": 0.673,
+  "median_vs_other_prs": 0.499,
+  "closest_to_own_pr": "7/9",
+  "by_verdict": {
+    "agreed": 0.708,
+    "disagreed": 0.519,
+    "partial": 0.658
+  },
+  "rows": [
+    {
+      "id": "encode-httpx-2715",
+      "verdict": "partial",
+      "cosine": 0.658,
+      "mean_vs_other_prs": 0.49,
+      "closest_to_own_pr": true
+    },
+    {
+      "id": "encode-httpx-1278",
+      "verdict": "disagreed",
+      "cosine": 0.519,
+      "mean_vs_other_prs": 0.439,
+      "closest_to_own_pr": false
+    },
+    {
+      "id": "encode-httpx-2666",
+      "verdict": "agreed",
+      "cosine": 0.708,
+      "mean_vs_other_prs": 0.499,
+      "closest_to_own_pr": true
+    },
+    {
+      "id": "encode-httpx-2443",
+      "verdict": "partial",
+      "cosine": 0.633,
+      "mean_vs_other_prs": 0.504,
+      "closest_to_own_pr": false
+    },
+    {
+      "id": "encode-httpx-2322",
+      "verdict": "agreed",
+      "cosine": 0.673,
+      "mean_vs_other_prs": 0.505,
+      "closest_to_own_pr": true
+    },
+    {
+      "id": "encode-httpx-2314",
+      "verdict": "partial",
+      "cosine": 0.673,
+      "mean_vs_other_prs": 0.525,
+      "closest_to_own_pr": true
+    },
+    {
+      "id": "encode-httpx-2246",
+      "verdict": "agreed",
+      "cosine": 0.835,
+      "mean_vs_other_prs": 0.474,
+      "closest_to_own_pr": true
+    },
+    {
+      "id": "encode-httpx-2233",
+      "verdict": "agreed",
+      "cosine": 0.642,
+      "mean_vs_other_prs": 0.478,
+      "closest_to_own_pr": true
+    },
+    {
+      "id": "encode-httpx-1798",
+      "verdict": "agreed",
+      "cosine": 0.756,
+      "mean_vs_other_prs": 0.507,
+      "closest_to_own_pr": true
+    }
+  ]
+}
