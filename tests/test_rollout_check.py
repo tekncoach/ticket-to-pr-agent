@@ -153,3 +153,61 @@ def test_it_does_not_see_2810_which_is_why_every_pull_request_is_read():
     if outcome["checked"] < 35:
         pytest.skip("batch is not the 35-unit one")
     assert "encode-httpx-2810" not in outcome["tripped"]
+
+
+# --- telling someone -------------------------------------------------------
+
+def _tripped_dir(tmp_path):
+    (tmp_path / "run-bad.jsonl").write_text(
+        "\n".join(json.dumps(e) for e in edit(1, "a.py") + edit(2, "b.py")))
+    return tmp_path
+
+
+def _capture():
+    import httpx
+    sent = []
+
+    def handler(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200)
+    return sent, httpx.MockTransport(handler)
+
+
+def test_a_trip_is_posted_to_the_alert_url_with_the_run_and_the_reason(tmp_path):
+    from agent.rollout_check import main
+    sent, transport = _capture()
+    code = main([str(_tripped_dir(tmp_path)), "--notify-url", "https://alerts.example/hook"],
+                notify_transport=transport)
+    assert code == 1
+    assert len(sent) == 1
+    assert "run-bad" in sent[0]["text"] and "size" in sent[0]["text"]
+
+
+def test_nothing_is_posted_when_nothing_tripped(tmp_path):
+    # A page that fires on a quiet week is a page people mute.
+    from agent.rollout_check import main
+    sent, transport = _capture()
+    (tmp_path / "run-ok.jsonl").write_text("\n".join(json.dumps(e) for e in edit(1, "a.py")))
+    assert main([str(tmp_path), "--notify-url", "https://alerts.example/hook"],
+                notify_transport=transport) == 0
+    assert sent == []
+
+
+def test_a_failed_notification_does_not_hide_the_trip(tmp_path, capsys):
+    # The exit code is the primary signal. A dead webhook must not turn a tripped
+    # trigger into a quiet success, and must say it could not tell anyone.
+    import httpx
+    from agent.rollout_check import main
+    transport = httpx.MockTransport(lambda request: httpx.Response(500))
+    code = main([str(_tripped_dir(tmp_path)), "--notify-url", "https://alerts.example/hook"],
+                notify_transport=transport)
+    assert code == 1
+    assert "could not notify" in capsys.readouterr().err
+
+
+def test_the_alert_url_can_come_from_the_environment(tmp_path, monkeypatch):
+    from agent.rollout_check import main
+    sent, transport = _capture()
+    monkeypatch.setenv("ROLLOUT_ALERT_URL", "https://alerts.example/hook")
+    main([str(_tripped_dir(tmp_path))], notify_transport=transport)
+    assert len(sent) == 1

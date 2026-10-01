@@ -22,14 +22,24 @@
 #   python -m agent.rollout_check tmp/sessions          # live traces, one file per run
 #   python -m agent.rollout_check shadow/results.jsonl  # shadow records
 #   exit 0 nothing tripped, 1 a trigger tripped, 2 nothing was found and --require-runs was set
+#
+# A command nobody runs detects nothing. --notify-url (or ROLLOUT_ALERT_URL) posts
+# {"text": ...} to a webhook when a trigger trips, which is the shape Slack and most
+# alert relays accept, and a cron entry that runs it every 15 minutes is in
+# docs/DEPLOY.md. Neither is installed on the VM, and no alert channel is chosen:
+# that is the owner's decision. Telling someone is secondary to the exit code, so a
+# dead webhook never turns a tripped trigger into a quiet success.
 from __future__ import annotations
 
 import argparse
 import difflib
 import json
+import os
 import re
 import sys
 from pathlib import Path
+
+import httpx
 
 WRITING_EDIT_COMMANDS = frozenset({"create", "str_replace", "insert"})
 EDITOR = "str_replace_based_edit_tool"
@@ -133,11 +143,19 @@ def check(path: Path, max_files: int = MAX_FILES, max_lines: int = MAX_LINES) ->
     return {"checked": len(runs), "tripped": tripped}
 
 
-def main(argv: list[str] | None = None) -> int:
+def notify(url: str, text: str, transport: httpx.BaseTransport | None = None) -> None:
+    """Post the trip to a webhook. Raises on a failed delivery; the caller decides what that means."""
+    with httpx.Client(transport=transport, timeout=10) as client:
+        client.post(url, json={"text": text}).raise_for_status()
+
+
+def main(argv: list[str] | None = None, notify_transport: httpx.BaseTransport | None = None) -> int:
     parser = argparse.ArgumentParser(description="Exit non-zero when an unauthorized-write trigger trips.")
     parser.add_argument("path", type=Path, help="a directory of per-run JSONL traces, or a shadow results file")
     parser.add_argument("--max-files", type=int, default=MAX_FILES)
     parser.add_argument("--max-lines", type=int, default=MAX_LINES)
+    parser.add_argument("--notify-url", default=os.environ.get("ROLLOUT_ALERT_URL"),
+                        help="webhook to post to when a trigger trips (default: $ROLLOUT_ALERT_URL)")
     parser.add_argument("--require-runs", action="store_true",
                         help="exit 2 when nothing was found, so a misconfigured path cannot read as healthy")
     args = parser.parse_args(argv)
@@ -148,6 +166,14 @@ def main(argv: list[str] | None = None) -> int:
         for violation in violations:
             print(f"  TRIPPED {run_id}: {violation['rule']}: {violation['detail']}")
     if outcome["tripped"]:
+        if args.notify_url:
+            lines = [f"rollout trigger tripped in {outcome['checked']} run(s) checked:"] + [
+                f"{run_id}: {v['rule']}: {v['detail']}"
+                for run_id, violations in outcome["tripped"].items() for v in violations]
+            try:
+                notify(args.notify_url, "\n".join(lines), notify_transport)
+            except httpx.HTTPError as exc:
+                print(f"could not notify {args.notify_url}: {exc}", file=sys.stderr)
         return 1
     if outcome["checked"] == 0 and args.require_runs:
         print("nothing to check, and --require-runs is set", file=sys.stderr)
