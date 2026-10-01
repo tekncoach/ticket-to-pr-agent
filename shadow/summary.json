@@ -1,5 +1,5 @@
 {
-  "run_at": "20261001T094736Z",
+  "run_at": "20261001T101659Z",
   "units": 35,
   "wrong_tree": [],
   "file_agreement": {
@@ -129,6 +129,105 @@
   },
   "tokens_per_unit": 9087.3,
   "cost_usd_per_unit": null,
+  "precision_recall": {
+    "precision": 0.81,
+    "recall": 0.258,
+    "precision_over_units": 19,
+    "recall_over_units": 35,
+    "files": {
+      "found": 17,
+      "extra": 4,
+      "missed": 49
+    }
+  },
+  "cost_usd": {
+    "prices_usd_per_mtok": {
+      "input": 1.0,
+      "output": 5.0,
+      "cache_read": 0.1
+    },
+    "mean": 0.0327,
+    "total": 1.144,
+    "histogram": [
+      {
+        "from": 0,
+        "to": 0.01,
+        "n": 1
+      },
+      {
+        "from": 0.01,
+        "to": 0.02,
+        "n": 6
+      },
+      {
+        "from": 0.02,
+        "to": 0.03,
+        "n": 10
+      },
+      {
+        "from": 0.03,
+        "to": 0.04,
+        "n": 8
+      },
+      {
+        "from": 0.04,
+        "to": 0.05,
+        "n": 3
+      },
+      {
+        "from": 0.05,
+        "to": 0.06,
+        "n": 7
+      },
+      {
+        "from": 0.06,
+        "to": 0.08,
+        "n": 0
+      },
+      {
+        "from": 0.08,
+        "to": null,
+        "n": 0
+      }
+    ]
+  },
+  "latency_histogram_ms": [
+    {
+      "from": 0,
+      "to": 10000,
+      "n": 2
+    },
+    {
+      "from": 10000,
+      "to": 20000,
+      "n": 8
+    },
+    {
+      "from": 20000,
+      "to": 30000,
+      "n": 10
+    },
+    {
+      "from": 30000,
+      "to": 40000,
+      "n": 8
+    },
+    {
+      "from": 40000,
+      "to": 50000,
+      "n": 5
+    },
+    {
+      "from": 50000,
+      "to": 60000,
+      "n": 1
+    },
+    {
+      "from": 60000,
+      "to": null,
+      "n": 1
+    }
+  ],
   "disagreements": [
     {
       "id": "encode-httpx-3349",
@@ -143,6 +242,7 @@
         "area": "docs",
         "size": "small"
       },
+      "wrote": false,
       "missed": [
         "docs/advanced/transports.md"
       ],
@@ -163,6 +263,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_transports/asgi.py"
       ],
@@ -185,6 +286,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "httpx/_transports/asgi.py",
         "tests/test_asgi.py"
@@ -208,6 +310,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": false,
       "missed": [
         "httpx/_config.py",
         "httpx/_transports/default.py"
@@ -231,6 +334,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "pyproject.toml"
       ],
@@ -253,6 +357,7 @@
         "area": "docs",
         "size": "small"
       },
+      "wrote": false,
       "missed": [
         "docs/advanced/transports.md"
       ],
@@ -273,6 +378,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_transports/asgi.py"
       ],
@@ -295,6 +401,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "httpx/_transports/asgi.py",
         "tests/test_asgi.py"
@@ -318,6 +425,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": false,
       "missed": [
         "httpx/_config.py",
         "httpx/_transports/default.py"
@@ -341,6 +449,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "pyproject.toml"
       ],
@@ -363,6 +472,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "pyproject.toml"
       ],
@@ -383,6 +493,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_urlparse.py",
         "tests/test_urlparse.py"
@@ -406,6 +517,7 @@
         "area": "docs",
         "size": "small"
       },
+      "wrote": true,
       "missed": [
         "docs/third_party_packages.md"
       ],
@@ -428,6 +540,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_urlparse.py",
         "tests/test_urlparse.py"
@@ -451,6 +564,7 @@
         "area": "code",
         "size": "small"
       },
+      "wrote": true,
       "missed": [],
       "extra": [],
       "stopped_on": null,
@@ -469,6 +583,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_utils.py",
         "tests/test_utils.py"
@@ -494,6 +609,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": true,
       "missed": [
         "tests/models/test_queryparams.py"
       ],
@@ -516,6 +632,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_content.py",
         "tests/test_content.py"
@@ -537,6 +654,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": false,
       "missed": [
         "httpx/_types.py",
         "httpx/_urls.py",
@@ -561,6 +679,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "httpx/__version__.py",
         "setup.py"
@@ -584,6 +703,7 @@
         "area": "code",
         "size": "small"
       },
+      "wrote": true,
       "missed": [],
       "extra": [],
       "stopped_on": "duplicate_tool_call",
@@ -604,6 +724,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "httpx/_types.py",
         "tests/test_multipart.py"
@@ -625,6 +746,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_multipart.py",
         "tests/test_multipart.py"
@@ -648,6 +770,7 @@
         "area": "code",
         "size": "small"
       },
+      "wrote": true,
       "missed": [],
       "extra": [],
       "stopped_on": null,
@@ -666,6 +789,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_urls.py",
         "tests/models/test_queryparams.py"
@@ -689,6 +813,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": true,
       "missed": [
         "httpx/_models.py"
       ],
@@ -711,6 +836,7 @@
         "area": "code",
         "size": "small"
       },
+      "wrote": true,
       "missed": [],
       "extra": [],
       "stopped_on": null,
@@ -733,6 +859,7 @@
         "area": "docs",
         "size": "medium"
       },
+      "wrote": true,
       "missed": [],
       "extra": [
         "httpx/_utils.py"
@@ -753,6 +880,7 @@
         "area": "docs",
         "size": "small"
       },
+      "wrote": false,
       "missed": [
         "docs/exceptions.md"
       ],
@@ -775,6 +903,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": true,
       "missed": [
         "tests/client/test_async_client.py"
       ],
@@ -795,6 +924,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": false,
       "missed": [
         "httpx/_main.py",
         "tests/conftest.py",
@@ -817,6 +947,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": false,
       "missed": [
         "httpx/_client.py",
         "httpx/_utils.py",
@@ -840,6 +971,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": false,
       "missed": [
         "httpx/_decoders.py",
         "httpx/_models.py",
@@ -864,6 +996,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": true,
       "missed": [
         "tests/client/test_async_client.py"
       ],
@@ -884,6 +1017,7 @@
         "area": "code",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "httpx/_transports/default.py"
       ],
@@ -906,6 +1040,7 @@
         "area": "code",
         "size": "small"
       },
+      "wrote": true,
       "missed": [],
       "extra": [],
       "stopped_on": "duplicate_tool_call",
@@ -926,6 +1061,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "tests/client/test_async_client.py",
         "tests/client/test_client.py"
@@ -949,6 +1085,7 @@
         "area": "deps",
         "size": "small"
       },
+      "wrote": true,
       "missed": [],
       "extra": [],
       "stopped_on": null,
@@ -969,6 +1106,7 @@
         "area": "code",
         "size": "large"
       },
+      "wrote": true,
       "missed": [
         "requirements.txt",
         "tests/conftest.py"
@@ -990,6 +1128,7 @@
         "area": "docs",
         "size": "medium"
       },
+      "wrote": false,
       "missed": [
         "docs/async.md"
       ],
