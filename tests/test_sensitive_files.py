@@ -144,3 +144,28 @@ def test_the_operator_can_add_names_for_a_target(monkeypatch):
         monkeypatch.delenv("SENSITIVE_FILES_EXTRA")
         importlib.reload(agent.config)
         importlib.reload(agent.sensitive_files)
+
+
+# --- what the name list does not cover, pinned so it cannot be claimed away ----
+#
+# The guard refuses credential file NAMES. A secret inside a file that is allowed,
+# or in a credential file's history, still gets through. The risk memo says so;
+# these two tests are the same sentence, enforced. If either ever goes red because
+# the gap closed, the memo has to change in the same commit.
+
+def test_a_secret_inside_an_allowed_file_is_not_caught(workspace):
+    (workspace / "settings.py").write_text('AWS_SECRET_ACCESS_KEY = "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"\n')
+    result = run(workspace, "cat settings.py")
+    assert result.ok
+    assert "wJalrXUtnFEMI" in result.data, "this gap is stated in the risk memo; if it closed, say so there"
+
+
+def test_a_credential_file_still_readable_from_git_history_is_not_caught(workspace):
+    import subprocess
+    git = lambda *a: subprocess.run(["git", "-C", str(workspace), "-c", "user.name=t", "-c", "user.email=t@t", *a],
+                                    check=True, capture_output=True)
+    git("init", "-q"); git("add", ".env"); git("commit", "-q", "-m", "oops, committed a secret")
+    (workspace / ".env").unlink()          # gone from the tree, still in the history
+    result = run(workspace, "git log -p")
+    assert result.ok, result.error_code
+    assert SECRET in result.data, "history is not covered by a name list; the memo says so"
