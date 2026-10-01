@@ -18,7 +18,7 @@ It has no tool that merges, approves, deletes a branch, or touches a repository 
 
 **Credential files are refused by name.** Both the shell and the file editor refuse `.env` and its variants, private keys (`id_rsa`, `id_ed25519`), `.pem`, `.key`, `.p12` and similar files, `.netrc` and `.git-credentials`. A recursive search skips them. Template files such as `.env.example` stay readable. The list can be extended for a target. This was found by testing, not by reading: before it, the agent could read a `.env` and a private key with `cat`, with `grep -r` and with the editor's view.
 
-**What is not scanned.** Names are not contents. A secret committed inside a source file would reach the model and the log. Nor does the name list cover a credential file's history: a tracked `.env` can still be read out of old commits with `git log -p` or `git grep`. Text the agent writes into a pull request or a comment is not scanned on its way out either.
+**What is not scanned.** Names are not contents. A secret committed inside a source file would reach the model and the log. Nor does the name list cover a credential file's history: a tracked `.env` can still be read out of old commits with `git log -p` or `git grep`. Both limits are pinned by tests that read the secret and pass, so neither can be claimed closed without the memo changing. Text the agent writes into a pull request or a comment is not scanned on its way out either.
 
 **The access token** is a fine-grained token limited to one repository, with write access to issues, pull requests and contents. The scopes are enough, technically, to merge a pull request, which is why the condition below on branch protection matters.
 

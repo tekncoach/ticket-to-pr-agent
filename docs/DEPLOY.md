@@ -90,6 +90,19 @@ curl -s https://ticket-to-pr-agent.exe.xyz/health   # the field must read what y
 
 **This needs SSH access to the VM**, held by one person today, so it does not meet the bar of being usable by someone who is not the author. A platform with an environment-variable page would remove the requirement; the variables are the same.
 
+## Running the rollback check on a schedule
+
+`agent/rollout_check.py` reads the run traces and exits 1 when an unauthorized-write trigger trips ([`SHADOW_ROLLOUT.md`](SHADOW_ROLLOUT.md)). Nothing runs it unattended until this entry is installed on the VM, and it needs an alert URL the owner chooses (a Slack incoming webhook, an `ntfy` topic, anything that accepts a JSON `{"text": ...}` post):
+
+```bash
+# every 15 minutes: check the traces inside the container, post to the webhook on a trip
+*/15 * * * * cd ~/app && docker compose --env-file .env -f deploy/docker-compose.yml exec -T agent \
+  python -m agent.rollout_check /app/tmp/sessions --require-runs --notify-url "$ROLLOUT_ALERT_URL" \
+  >> ~/rollout-check.log 2>&1
+```
+
+`--require-runs` makes a missing or empty trace directory exit 2 instead of reading as healthy, which also means a week with no runs at all will exit 2: drop the flag for a deployment that is expected to be idle. A dead webhook never hides a trip: the exit code stays 1 and the log says it could not notify. This has been tested against recorded traces and a stand-in webhook, and has not been installed here.
+
 ## The image goes stale on purpose
 
 `TARGET_REF` pins the target repo's commit at build time rather than tracking

@@ -114,9 +114,11 @@ curl -s https://ticket-to-pr-agent.exe.xyz/health   # agent_enabled must read fa
 
 **Not yet run against the live VM.** The helper was tested on a copy of `.env` (replace, then append), and the switches are tested through the real loop. The first live flip is a stage 1 entry criterion. Recreating the container ends any run in progress, since `/v1/run` is synchronous.
 
+**Second operator: not yet identified.** Stage 1 does not start until a name is written on this line and that person has flipped a switch and confirmed it on `/health`. A plan cannot assign a person; the owner has to.
+
 The owner is Pierre G., who holds the only SSH access. **That fails the 3 a.m. test**: the person holding the pager cannot act without that access, and a platform with an environment-variable page would remove the SSH requirement. The three variables are the same on any platform; the stage 2 entry criterion names a second person with access for this reason.
 
-**Detection is a command; scheduling it is not built.** `make rollout-check` covers `unauthorized_write_proxy` only. It exits 2 when it finds nothing and `REQUIRE=1` is set, so a wrong path cannot read as healthy. Running it on a schedule and paging the owner on its exit code is not built. The reviewer-rejection trigger and the faithfulness sample stay with a person reading the weekly review. The flip itself stays manual because the platform has no API for it.
+**Detection is a command that can tell someone; installing it is not done.** `make rollout-check` covers `unauthorized_write_proxy` only. It exits 2 when it finds nothing and `REQUIRE=1` is set, so a wrong path cannot read as healthy, and with `--notify-url` (or `ROLLOUT_ALERT_URL`) it posts the run and the reason to a webhook when a trigger trips. A dead webhook never turns a trip into a quiet success: the exit code stays 1 and the failure is printed. The cron entry that runs it every 15 minutes is in [`DEPLOY.md`](DEPLOY.md#running-the-rollback-check-on-a-schedule). **It is not installed on the VM and no alert channel is chosen**: that is the owner's decision, and the stage 1 entry criterion below is to make it. The reviewer-rejection trigger and the faithfulness sample stay with a person reading the weekly review. The flip itself stays manual because the platform has no API for it.
 
 ## Monitoring & ownership
 Every metric below is computed from fields the run trace already carries (`tool_result.ok`, `error_class`, usage tokens, run timestamps) or from the pull request on GitHub. **No dashboard is built.** Each metric names its source so one can be built without new instrumentation.
@@ -148,13 +150,13 @@ Every metric below is computed from fields the run trace already carries (`tool_
 ## Ask for stakeholders
 **Decision rule.** Stage 0 is not exited until unsafe proposals = 0 over at least 50 slice units. A clean 50 bounds the unsafe rate under 6% at 95% confidence (the rule of three, 3 over n, if tickets are independent), and that bound is the one number that changes the no-go.
 
-Do **not** approve stage 1. Stage 0 has 15 of the 50 slice units it needs, and 1 of them wrote outside scope. A first portion ran (6 units, about $0.26). Approve the rest: at least 35 more single-file, one-line tickets, harvested from public repositories since this project's source has no more, about $1.50 at the $0.043 an attempt measured on this slice. Approve naming a second person with access to the kill switches before stage 1, the first stage that writes.
+Do **not** approve stage 1. Stage 0 has 15 of the 50 slice units it needs, and 1 of them wrote outside scope. A first portion ran (6 units, about $0.26). Approve the rest: at least 35 more single-file, one-line tickets, harvested from public repositories since this project's source has no more, about $1.50 at the $0.043 an attempt measured on this slice. Approve naming a second person with access to the kill switches before stage 1, the first stage that writes: nobody is identified today. Approve choosing the alert channel the rollback check posts to.
 
 ## What is not built
 | Gap | Revisit when |
 |---|---|
-| scheduling `make rollout-check` and paging on its exit code; the reviewer-rejection trigger and the faithfulness sample stay manual | before stage 1 |
+| installing the `make rollout-check` cron entry on the VM and choosing the alert channel; the reviewer-rejection trigger and the faithfulness sample stay manual | before stage 1 |
 | dashboards | before stage 1 |
 | `get_ci_status`, so the agent never learns whether CI went green | before stage 2 |
-| a second person with access to the switches | before stage 1 |
+| a named second person with access to the switches: none identified | before stage 1 |
 | log retention (see the risk memo) | before the customer reads it |
