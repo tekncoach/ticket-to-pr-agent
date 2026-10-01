@@ -47,7 +47,7 @@ Walkthrough: [`docs/DEMO.md`](docs/DEMO.md).
 ## Quickstart
 
 ```bash
-make hooks        # once per clone: the pre-push gate (unit suite, frozen golden set, retrieval evals)
+make hooks        # once per clone: the pre-push gate (unit suite, frozen golden set)
 make run          # http://localhost:8000, hot-reloading
 make docker-up    # the container the VM runs
 make test         # hermetic tests, no key needed

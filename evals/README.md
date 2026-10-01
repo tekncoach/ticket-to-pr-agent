@@ -125,7 +125,7 @@ ran. So the split is:
 | | where | what |
 |---|---|---|
 | CI, every push | GitHub | `make test` and `make golden-check` — hermetic, free, no secrets |
-| `make hooks` | your machine | `scripts/pre-push` adds the retrieval gate, which has the corpus |
+| `make hooks` | your machine | `scripts/githooks/pre-push` runs the unit suite and the golden-set lock. Its retrieval gate is commented out (see the note in the hook) |
 | on demand | anywhere with `.env` | `make golden TIER=single_turn PASSES=3` |
 
 The way to move the eval gate into CI is to stop needing the data: each run
