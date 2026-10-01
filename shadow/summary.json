@@ -1,5 +1,5 @@
 {
-  "run_at": "20261001T101659Z",
+  "run_at": "20261001T104038Z",
   "units": 35,
   "wrong_tree": [],
   "file_agreement": {
@@ -21,6 +21,11 @@
       "encode-httpx-2233"
     ],
     "of": 35,
+    "rate": 0.114,
+    "one_unit_swing": [
+      0.086,
+      0.143
+    ],
     "source_files": {
       "encode-httpx-2810": [
         "httpx/_urls.py"

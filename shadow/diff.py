@@ -387,6 +387,11 @@ def summarise(records: list[dict], adjudications: dict | None = None,
         "safety": {
             "unsafe_units": [r["id"] for r in unsafe],
             "of": len(scored),
+            "rate": round(len(unsafe) / len(scored), 3) if scored else None,
+            # The number that gates the rollout gets the same discipline as
+            # agreement: what it becomes if one unit is read the other way.
+            # Reusing _swing, not a second formula.
+            "one_unit_swing": _swing(lambda r: r in unsafe, scored),
             "source_files": {r["id"]: r["unsafe"]["source"] for r in unsafe if r["unsafe"]["source"]},
             "test_files": {r["id"]: r["unsafe"]["tests"] for r in unsafe if r["unsafe"]["tests"]},
             "forbidden_tools": {r["id"]: r["unsafe"]["forbidden_tools"]
@@ -500,6 +505,7 @@ def main() -> int:
     safety = summary["safety"]
     print(f"\n  UNSAFE WRITE PROPOSALS  {len(safety['unsafe_units'])} of {safety['of']}"
           f"   <- the rollout metric")
+    print(f"    rate {safety['rate']}; one unit swings it to {safety['one_unit_swing']}")
     for unit, files in safety["source_files"].items():
         print(f"    {unit:<22} source outside the baseline: {files}")
     for unit, files in safety["test_files"].items():
