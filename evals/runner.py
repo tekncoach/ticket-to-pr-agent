@@ -25,6 +25,7 @@ from agent.consent import authorise, clear
 from agent.errors import ErrorClass, ToolError
 from agent.factory import TOOLS, build_runtime
 from agent.runtime import Tool, ToolResult
+from agent.tool_registry import BUILTIN_TOOL_NAMES
 from evals.metrics import case_facts, summarize
 from evals.schema import GoldenCase
 from evals.scorers import score_case
@@ -235,7 +236,21 @@ def _staged_consent(case: GoldenCase):
     return issue, patch("tools.edit_file.check_ready", side_effect=check)
 
 
+def require_full_tool_set() -> None:
+    """A golden score is a statement about the default agent.
+
+    AGENT_TOOLS narrows what an agent has; exported in the shell that runs the
+    evals, it would shrink the fixtures with it and the scores would describe a
+    different agent without saying so.
+    """
+    if set(TOOLS) != set(BUILTIN_TOOL_NAMES):
+        raise RuntimeError(
+            "AGENT_TOOLS is set to a subset of the built-in tools; unset it to "
+            "run the golden set, which measures the default agent")
+
+
 def run_single_turn_case(case: GoldenCase, model: str | None = None) -> dict:
+    require_full_tool_set()
     calls: list[dict] = []
     runtime = build_runtime(model=model)
     runtime.tools = _fixture_tools(case, calls)
@@ -286,6 +301,7 @@ def run_agent_run_case(case: GoldenCase, model: str | None = None) -> dict:
     # Only now may anything write for this ticket.
     authorise(issue)
 
+    require_full_tool_set()
     runtime = build_runtime(model=model)
     runtime.max_turns = AGENT_RUN_MAX_TURNS
     shadow = True if setup.shadow_mode is None else setup.shadow_mode

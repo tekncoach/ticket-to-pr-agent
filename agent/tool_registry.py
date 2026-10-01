@@ -46,7 +46,18 @@ class LoadedTools:
 
 
 def _import(module: str, attr: str):
-    return getattr(importlib.import_module(module), attr)
+    """ImportError means the module (or a dependency of it) is absent.
+
+    The attribute lookup is split from the import on purpose: an AttributeError
+    raised INSIDE a plugin's own top-level code is a bug in the plugin, and
+    swallowing it as "optional tool unavailable" would hide it. Only a missing
+    name on a module that imported fine counts as a missing tool.
+    """
+    mod = importlib.import_module(module)
+    try:
+        return getattr(mod, attr)
+    except AttributeError as e:
+        raise ImportError(f"module {module!r} has no attribute {attr!r}") from e
 
 
 def load_tools(spec: str | None) -> LoadedTools:
@@ -68,7 +79,7 @@ def load_tools(spec: str | None) -> LoadedTools:
             module, _, attr = ref.partition(":")
             try:
                 tool = _import(module, attr)
-            except (ImportError, AttributeError) as e:
+            except ImportError as e:
                 if not optional:
                     raise ToolConfigError(
                         f"AGENT_TOOLS entry {ref!r} cannot be imported "
@@ -82,7 +93,7 @@ def load_tools(spec: str | None) -> LoadedTools:
             module, attr = _BUILTIN_SPECS[ref]
             try:
                 tool = _import(module, attr)
-            except (ImportError, AttributeError) as e:
+            except ImportError as e:
                 if not optional:
                     raise
                 unavailable[ref] = f"{type(e).__name__}: {e}"

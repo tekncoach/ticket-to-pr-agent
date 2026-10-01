@@ -48,6 +48,9 @@ def plugin_dir(tmp_path, monkeypatch):
         echo = Tool(name="echo", handler=lambda a: ToolResult(ok=True, data=a),
                     description="echo", input_schema={"type": "object", "properties": {}})
         not_a_tool = 42
+        side_effecting = Tool(name="push_it", side_effect=True,
+                              handler=lambda a: ToolResult(ok=True, data="pushed"),
+                              input_schema={"type": "object", "properties": {}})
         clash = Tool(name="bash", handler=lambda a: ToolResult(ok=True))
     """))
     monkeypatch.syspath_prepend(str(tmp_path))
@@ -121,3 +124,82 @@ def test_compose_hands_the_selection_to_the_container():
 def test_toolresult_import_is_the_runtime_one():
     # Guards the plugin contract: external tools build on the runtime's own types.
     assert ToolResult(ok=True).ok
+
+
+# --- the contracts the module's header claims ------------------------------
+
+def test_a_bug_inside_an_optional_plugin_is_not_reported_as_absent(tmp_path, monkeypatch):
+    # Optional covers a missing dependency. A plugin that fails for its own
+    # reasons must stop the start, or "?" becomes a way to hide a broken tool.
+    (tmp_path / "broken_plugin.py").write_text("raise RuntimeError('plugin bug')\n")
+    (tmp_path / "attr_plugin.py").write_text("{}.nope\n")
+    monkeypatch.syspath_prepend(str(tmp_path))
+    with pytest.raises(RuntimeError, match="plugin bug"):
+        load_tools("broken_plugin:t?")
+    with pytest.raises(AttributeError):
+        load_tools("attr_plugin:t?")
+
+
+def test_a_missing_attribute_on_a_present_module_is_a_missing_tool(plugin_dir):
+    assert "plugin_tools:ghost" in load_tools("plugin_tools:ghost?").unavailable
+    with pytest.raises(ToolConfigError, match="ghost"):
+        load_tools("plugin_tools:ghost")
+
+
+def test_an_external_write_tool_still_meets_the_write_gate(plugin_dir, monkeypatch):
+    # The header says loading a tool does not bypass the gate. The proof is a
+    # tool that arrived through the registry being refused by the real loop.
+    from test_kill_switches import _drive, _results
+
+    from agent.event_sink import NullSink
+    from agent.runtime import AgentRuntime
+
+    monkeypatch.setenv("LLM_API_KEY", "not-a-real-key")
+    tool = load_tools("plugin_tools:side_effecting").tools["push_it"]
+    runtime = AgentRuntime(model="m", tools={"push_it": tool}, system="s",
+                           logger=NullSink(), allow_side_effects=lambda: False)
+    run = _drive(runtime, [[("push_it", {})]])
+    [result] = _results(run)
+    assert result["ok"] is False and result["error_class"] == "denied"
+
+
+def test_an_external_tool_can_be_switched_off_like_a_builtin(plugin_dir, monkeypatch):
+    from test_kill_switches import _drive, _results
+
+    from agent.config import disabled_tools
+    from agent.event_sink import NullSink
+    from agent.runtime import AgentRuntime
+
+    monkeypatch.setenv("LLM_API_KEY", "not-a-real-key")
+    monkeypatch.setenv("DISABLED_TOOLS", "echo")
+    tool = load_tools("plugin_tools:echo").tools["echo"]
+    runtime = AgentRuntime(model="m", tools={"echo": tool}, system="s",
+                           logger=NullSink(), disabled_tools=disabled_tools)
+    [result] = _results(_drive(runtime, [[("echo", {})]]))
+    assert result["error_code"] == "denied: tool disabled by operator: echo"
+
+
+def test_build_runtime_hands_the_model_the_gap_note(monkeypatch):
+    # prompt_for is tested above; this pins that the real constructor calls it.
+    monkeypatch.setenv("LLM_API_KEY", "not-a-real-key")
+    monkeypatch.setattr("agent.factory.TOOLS_UNAVAILABLE", {"x:y": "ModuleNotFoundError"})
+    from agent.factory import build_runtime
+    assert "x:y" in build_runtime().system
+
+
+def test_health_lists_what_did_not_load(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from agent import service
+    monkeypatch.setattr(service, "TOOLS_UNAVAILABLE", {"x:y": "ModuleNotFoundError: x"})
+    body = TestClient(service.app).get("/health").json()
+    assert body["tools_unavailable"] == {"x:y": "ModuleNotFoundError: x"}
+
+
+def test_the_golden_runner_refuses_a_reduced_tool_set(monkeypatch):
+    # AGENT_TOOLS exported in the shell would otherwise make every golden and
+    # shadow number describe a different agent than the one deployed by default.
+    from evals import runner
+    monkeypatch.setattr(runner, "TOOLS", {"bash": runner.TOOLS["bash"]})
+    with pytest.raises(RuntimeError, match="AGENT_TOOLS"):
+        runner.require_full_tool_set()
