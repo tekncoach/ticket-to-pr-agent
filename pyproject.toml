@@ -48,6 +48,7 @@ dev = [
     # transitive dependency disappears when its parent drops it — here that
     # would take the CI gate's own config parser with it.
     "pyyaml>=6.0",
+    "ruff>=0.8",
 ]
 
 # An application, not an installable library — uv manages the venv + deps
@@ -56,6 +57,40 @@ dev = [
 # consumes this as an installed dependency.
 [tool.uv]
 package = false
+
+[tool.ruff]
+# One definition of the lint, read by `make lint`, by CI and by the pre-push hook.
+# Before this, ruff run from outside the project reported a different count
+# depending on whose defaults it picked up, which is no gate at all.
+line-length = 120
+extend-exclude = ["shadow/clones"]
+
+[tool.ruff.lint]
+# E, F: errors and pyflakes, which is where a name that does not exist is found.
+# I: import order. B: bugbear, for the zip() that silently drops an unpaired item,
+# which this repo has already paid for once. UP: syntax the supported Python no
+# longer needs.
+select = ["E", "F", "I", "B", "UP"]
+ignore = [
+    # `l` over lines of text, in comprehensions and tests. A rename across forty
+    # sites to satisfy a style rule is churn with a typo risk and catches nothing.
+    "E741",
+    # An assigned lambda in a test helper reads better than a def of the same
+    # three tokens, and has never hidden a defect here.
+    "E731",
+    # Semicolons in tests that set up a fixture on one line.
+    "E702",
+    # ErrorClass is (str, Enum), not StrEnum, on purpose: the typed error codes are
+    # built with str() and f-strings, and StrEnum changes what str() gives for a
+    # member. Not worth a behaviour change in the error taxonomy for a style rule.
+    "UP042",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# An HTML page held in Python strings, and a smoke set of long query strings.
+# Wrapping either changes what is rendered or asked.
+"shadow/review.py" = ["E501"]
+"evals/test_rag_smoke_set.py" = ["E501"]
 
 [tool.pytest.ini_options]
 # tests/ only. evals/ is a different thing that costs money to run and is

@@ -38,6 +38,9 @@ jobs:
       # The Makefile calls `test` the CI gate; two copies of that intent drift,
       # and the one CI runs wins silently. This makes the documented gate the
       # executed one.
+      # Before the tests: it costs a second and a name that does not exist is
+      # cheaper to find here than in a failing test, or not at all.
+      - run: make lint
       - run: make test
       # Free, deterministic, no network and no model: it compares the golden
       # set's sha256 to evals/golden.lock.json. The suite above already fails

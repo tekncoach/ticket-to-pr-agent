@@ -2,7 +2,7 @@
 # shadow audit can ask GitHub about it without loading the agent.
 TARGET_REPO ?= tekncoach/liberty-rider-myroadtrips
 
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit shadow-harvest shadow-run shadow-audit-before shadow-audit-after shadow-diff rollout-check judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit shadow-harvest shadow-run shadow-audit-before shadow-audit-after shadow-diff rollout-check lint judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -208,3 +208,8 @@ docker-down:
 # a shadow results file to see what the trigger would have said about it.
 rollout-check:
 	uv run python -m agent.rollout_check $(or $(RUNS),tmp/sessions) $(if $(REQUIRE),--require-runs,)
+
+# One lint, read from pyproject.toml, run by CI and by the pre-push hook. `make
+# lint FIX=1` applies the safe fixes.
+lint:
+	uv run ruff check . $(if $(FIX),--fix,)

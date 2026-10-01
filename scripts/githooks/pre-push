@@ -13,6 +13,12 @@ cd "$(git rev-parse --show-toplevel)"
 
 fail() { echo "pre-push: $1" >&2; echo "pre-push: push refused. --no-verify overrides." >&2; exit 1; }
 
+echo "pre-push: lint"
+if ! lint_out=$(make lint 2>&1); then
+  printf '%s\n' "$lint_out" | tail -40 >&2
+  fail "the linter found something"
+fi
+
 echo "pre-push: unit suite"
 # The output is kept and shown on failure: a refusal that does not say which
 # test failed cannot be acted on, and the reader's only move is --no-verify.
