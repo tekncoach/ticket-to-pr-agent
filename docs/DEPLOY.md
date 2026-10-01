@@ -77,6 +77,8 @@ Four environment variables, in the order to reach for them. The rollout plan say
 | `DISABLED_TOOLS=open_pr,comment_on_ticket` | the named tools are refused, the rest work | `disabled_tools`, `disabled_tools_unknown` |
 | `LLM_MODEL=<model>` | the model fallback | `model` |
 
+`AGENT_TOOLS` is a different kind of setting: it chooses which tools exist at all, where `DISABLED_TOOLS` refuses ones that do. Unset, every built-in loads. A comma list picks a subset (`AGENT_TOOLS=fetch_ticket,search_kb` is a read-only agent), `module:attr` loads a `Tool` from outside the repo, and a trailing `?` lets the agent start without an entry whose import fails. A misspelt name stops the start with the list of valid ones. Optional entries that did not load appear under `tools_unavailable` on `/health` and in one sentence of the system prompt. It is read once at start, so changing it also means recreating the container.
+
 Changing one needs the container recreated, not rebuilt, and none of it needs a deploy:
 
 ```bash

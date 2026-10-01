@@ -31,7 +31,7 @@ Tier = Literal["retrieval", "single_turn", "agent_run"]
 
 Split = Literal["core", "hard", "adversarial"]
 
-# Every tool the agent can choose. Mirrors agent/factory.py's TOOLS: an
+# Every tool the agent can choose. Mirrors agent/tool_registry.py's BUILTIN_TOOL_NAMES: an
 # expected_tools entry naming something not registered is a typo, and a typo
 # that scores as "the model failed to call it" is worse than a load error.
 ToolName = Literal[

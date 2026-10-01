@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from agent.config import SESSIONS_DIR, agent_enabled, disabled_tools, shadow_mode
 from agent.consent import authorise, clear
 from agent.errors import ErrorClass, classify
-from agent.factory import LLM_MODEL, TOOLS, build_runtime, llm_ready
+from agent.factory import LLM_MODEL, TOOLS, TOOLS_UNAVAILABLE, build_runtime, llm_ready
 from agent.runtime import AgentRuntime
 from agent.tickets import READY_LABEL, check_ready, list_issues, task_prompt
 
@@ -234,6 +234,9 @@ def health() -> dict:
         "llm_ready": llm_ready(),
         "model": LLM_MODEL,
         "tools": sorted(TOOLS.keys()),
+        # Optional tools (AGENT_TOOLS entries ending in "?") that failed to
+        # import, with the reason. Empty is the normal state.
+        "tools_unavailable": TOOLS_UNAVAILABLE,
     }
 
 

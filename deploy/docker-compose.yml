@@ -34,6 +34,8 @@ services:
       HF_TOKEN: ${HF_TOKEN:-}
       LLM_MODEL: ${LLM_MODEL:-claude-haiku-4-5}
       MAX_TURNS: ${MAX_TURNS:-8}
+      # Which tools load; empty means all built-ins (agent/tool_registry.py).
+      AGENT_TOOLS: ${AGENT_TOOLS:-}
       # Deliberately not defaulted to false anywhere in this file. Turning
       # writes on is a decision someone makes explicitly, on the host.
       SHADOW_MODE: ${SHADOW_MODE:-true}

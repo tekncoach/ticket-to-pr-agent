@@ -12,14 +12,8 @@ import os
 from agent.config import disabled_tools, writes_allowed
 from agent.event_sink import EventSink, JSONLFileSink, MultiSink, StdoutSink
 from agent.runtime import AgentRuntime, Tool
+from agent.tool_registry import load_tools
 from rag.retrieve import GROUNDING
-from tools.bash import bash
-from tools.comment_on_ticket import comment_on_ticket
-from tools.edit_file import edit_file
-from tools.fetch_ticket import fetch_ticket
-from tools.open_pr import open_pr
-from tools.run_tests import run_tests
-from tools.search_kb import search_kb
 
 LLM_MODEL = os.environ.get("LLM_MODEL", "claude-haiku-4-5")
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "1024"))
@@ -92,15 +86,26 @@ SYSTEM_PROMPT = (
 # of schemas and a separate TOOL_HANDLERS dict of callables. Our Tool
 # dataclass bundles both into one object, so there's only one place to
 # register a tool instead of two that can drift apart.
-TOOLS: dict[str, Tool] = {
-    "bash": bash,
-    "comment_on_ticket": comment_on_ticket,
-    "fetch_ticket": fetch_ticket,
-    "open_pr": open_pr,
-    "run_tests": run_tests,
-    "search_kb": search_kb,
-    "str_replace_based_edit_tool": edit_file,
-}
+#
+# Which tools load is AGENT_TOOLS (see agent/tool_registry.py). Unset, it is all
+# seven built-ins, as before. Resolved once at import: a tool list that changes
+# under a running process would make a trace unreadable.
+_LOADED = load_tools(os.environ.get("AGENT_TOOLS"))
+TOOLS: dict[str, Tool] = _LOADED.tools
+TOOLS_UNAVAILABLE: dict[str, str] = _LOADED.unavailable
+
+
+def prompt_for(unavailable: dict[str, str]) -> str:
+    """SYSTEM_PROMPT, plus a line only when an optional tool did not load.
+
+    The prompt names bash, search_kb and the rest as if they exist. A model told
+    that and then missing one would try it and read the failure as its own
+    mistake; one sentence up front is cheaper than that run.
+    """
+    if not unavailable:
+        return SYSTEM_PROMPT
+    return (SYSTEM_PROMPT + "\nThese configured tools are not available in this "
+            "deployment, so do not try them: " + ", ".join(sorted(unavailable)) + ".")
 
 
 def llm_ready() -> bool:
@@ -120,7 +125,7 @@ def build_runtime(model: str | None = None) -> AgentRuntime:
     into code at exactly the point where it could have been measured.
     """
     return AgentRuntime(
-        model=model or LLM_MODEL, tools=TOOLS, system=SYSTEM_PROMPT,
+        model=model or LLM_MODEL, tools=TOOLS, system=prompt_for(TOOLS_UNAVAILABLE),
         max_tokens=MAX_TOKENS, max_turns=MAX_TURNS,
         # The function, not its value: passing writes_allowed() here would
         # freeze the switch at construction, which is the bug this replaces.

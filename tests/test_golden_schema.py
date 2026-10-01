@@ -50,7 +50,7 @@ def test_every_expected_tool_is_a_tool_the_agent_actually_has():
     # agent/factory.py and the golden set stops matching it — silently, because
     # "the model did not call open_pr" and "open_pr no longer exists" score the
     # same. This makes the second one a red test instead.
-    from agent.factory import TOOLS
+    from agent.tool_registry import BUILTIN_TOOL_NAMES as TOOLS
 
     assert set(ToolName.__args__) == set(TOOLS), (
         "evals/schema.py's ToolName has drifted from agent/factory.py's registry"
