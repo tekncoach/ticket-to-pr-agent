@@ -25,6 +25,8 @@ import re
 import subprocess
 from pathlib import Path
 
+from shadow.baseline import Baseline
+
 HERE = Path(__file__).parent
 CLOSES = re.compile(r"\b(?:closes|closed|fixes|fixed|resolves|resolved)\s+#(\d+)", re.I)
 # Bots author most "closes #N" pull requests in an active repository, and a
@@ -37,6 +39,25 @@ def gh(path: str) -> dict | list:
     if out.returncode != 0:
         raise RuntimeError(out.stderr.strip()[:200])
     return json.loads(out.stdout)
+
+
+def baseline_for(pull: dict, files: list[str]) -> Baseline:
+    """The baseline a merged pull request gives, or an honest absence.
+
+    A pull request that changed no file leaves nothing to compare a proposal with.
+    It is recorded as unavailable and says why, instead of as a baseline with an
+    empty list that every later step would have to remember means "none".
+    """
+    if not files:
+        return Baseline.unavailable(f"PR #{pull['number']} changed no file: {pull['title']}")
+    return Baseline(
+        source="merged-pull-request",
+        action=pull["title"],
+        artifact=(f"PR #{pull['number']}: {pull.get('changed_files') or 0} file(s), "
+                  f"+{pull.get('additions')}/-{pull.get('deletions')} {pull['html_url']}"),
+        at=pull.get("merged_at"),
+        files=sorted(files),
+    )
 
 
 def harvest(repo: str, want: int, max_files: int, max_lines: int) -> list[dict]:
@@ -83,20 +104,9 @@ def harvest(repo: str, want: int, max_files: int, max_lines: int) -> list[dict]:
                 "opened_at": issue["created_at"],
                 # The baseline, recorded at harvest so the pair is fixed before
                 # the agent ever sees the input.
-                "baseline": {
-                    "source": "merged-pull-request",
-                    # The paths, not just a count. Comparing "1 file" to "1
-                    # file" says nothing; comparing which file says whether the
-                    # agent found the same place.
-                    "files": sorted(f["filename"] for f in
-                                    (gh(f"repos/{repo}/pulls/{item['number']}/files"
-                                        "?per_page=100") or [])),
-                    "action": pull["title"],
-                    "artifact": (f"PR #{pull['number']}: {changed} file(s), "
-                                 f"+{pull.get('additions')}/-{pull.get('deletions')} "
-                                 f"{pull['html_url']}"),
-                    "at": pull.get("merged_at"),
-                },
+                "baseline": baseline_for(pull, [
+                    f["filename"] for f in
+                    (gh(f"repos/{repo}/pulls/{item['number']}/files?per_page=100") or [])]).as_record(),
                 "merge_commit": pull.get("merge_commit_sha"),
                 "base_sha": (pull.get("base") or {}).get("sha"),
             })

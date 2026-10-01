@@ -12,7 +12,6 @@ import pytest
 from shadow.audit import compare
 from shadow.runner import redact, redact_deep
 
-
 # --- redaction, at write time -----------------------------------------------
 
 def test_an_issue_body_loses_its_personal_data():
@@ -294,6 +293,7 @@ def test_the_shadow_prompt_names_the_workspace_it_dropped_the_agent_in(monkeypat
 
 def _bash(tmp_path, command):
     from unittest.mock import patch
+
     from tools.bash import bash
     with patch("tools.bash.WORKSPACE", tmp_path):
         return bash.handler({"command": command})
@@ -360,7 +360,8 @@ def test_an_unadjudicated_partial_does_not_count_as_agreement():
 def test_a_partial_called_half_the_fix_counts_and_one_called_coincidental_does_not():
     from shadow.diff import summarise
 
-    half = summarise([_partial()], {ID: {"call": "half-the-fix", "why": "the asgi change is the fix; the test is its cover"}})
+    half = summarise([_partial()], {ID: {"call": "half-the-fix",
+                                         "why": "the asgi change is the fix; the test is its cover"}})
     assert half["file_agreement"]["of_finished"] == 1.0
     assert half["file_agreement"]["partials_awaiting_adjudication"] == []
 
@@ -818,3 +819,52 @@ def test_the_runner_and_the_comparator_agree_on_what_small_means():
     unit = _unit(4, ["httpx/_a.py"], "PR #4: 1 file(s), +30/-0 https://x")   # 30 lines: not small
     assert tags({"baseline": unit["baseline"]})["size"] != "small"
     assert filter_units([unit], "small", set()) == []
+
+
+# --- the baseline, built in one place --------------------------------------
+
+def _pull(**over):
+    return {"number": 7, "title": "Fix the thing", "changed_files": 2, "additions": 5, "deletions": 1,
+            "html_url": "https://github.com/o/r/pull/7", "merged_at": "2026-01-01T00:00:00Z", **over}
+
+
+def test_a_merged_pull_request_becomes_a_baseline_with_its_files_sorted():
+    from shadow.harvest import baseline_for
+
+    baseline = baseline_for(_pull(), ["b.py", "a.py"]).as_record()
+    assert baseline["source"] == "merged-pull-request"
+    assert baseline["files"] == ["a.py", "b.py"]
+    assert baseline["action"] == "Fix the thing"
+    assert baseline["artifact"].startswith("PR #7: 2 file(s), +5/-1")
+
+
+def test_a_pull_request_that_changed_no_file_is_unavailable_and_says_why():
+    # #1499's pull request changed no file. Recorded as a baseline with an empty
+    # list, every later step would have to remember that an empty list means
+    # "nothing to compare with"; recorded as unavailable, it is named once.
+    from shadow.harvest import baseline_for
+
+    baseline = baseline_for(_pull(changed_files=0), []).as_record()
+    assert baseline["source"] == "none"
+    assert baseline["files"] == []
+    assert "PR #7 changed no file" in baseline["action"]
+
+
+def test_an_unavailable_baseline_is_read_as_such_by_the_comparator():
+    from shadow.baseline import Baseline
+    from shadow.diff import classify
+
+    record = _record(["a.py"], [])
+    record["baseline"] = Baseline.unavailable("no merged change").as_record()
+    assert classify(record)["verdict"] == "baseline-unavailable"
+
+
+def test_the_record_shape_is_the_one_the_traffic_file_already_uses():
+    # The committed traffic was written by a hand-built dict. The dataclass must
+    # produce the same five keys, or harvest would silently change the format.
+    import json
+
+    from shadow.baseline import Baseline
+
+    first = json.loads((Path(__file__).parent.parent / "shadow" / "traffic.jsonl").read_text().splitlines()[0])
+    assert set(first["baseline"]) == set(Baseline(source="x", action="y").as_record())
