@@ -1,4 +1,4 @@
-﻿# Evals — the agent's behaviour, not our code's
+# Evals — the agent's behaviour, not our code's
 
 `tests/` asks *does this code do what we wrote?* This directory asks *does the
 agent behave correctly?* They are different questions and they must not share a

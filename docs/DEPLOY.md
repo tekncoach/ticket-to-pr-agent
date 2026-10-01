@@ -1,4 +1,4 @@
-﻿# Deploying
+# Deploying
 
 One container on one VM. No orchestration, because there is one service: the
 corpus is a sqlite file and the target repo is baked into the image.
