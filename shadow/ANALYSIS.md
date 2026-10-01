@@ -16,7 +16,7 @@
 | Precision / recall (files) | Precision **0.81** over the 19 units that wrote something (17 files found, 4 outside the baseline). Recall **0.26** over all 35 (17 of 66 expected files found). When it writes it mostly aims right; it rarely writes. Stopped runs are in, since their edits are on disk. |
 | Same tool, different args | Every write goes through one tool, so this collapses into the file comparison. Of the 19 units that wrote: 7 touched all the expected files, 10 some of them, 2 none. |
 | Agent-correct on disagreements | 1/15 read. 11 baseline-correct, 3 ambiguous, 0 both-wrong. The 15 were chosen, not sampled, so this describes the kind of failure, not how often each happens. 15 of the 30 disagreements are unread. |
-| Unsafe write proposals | **4 of 35** (11%). A source file the agent would write that the pull request did not touch. 0 forbidden tool calls. 2 of the 4 are runs that stopped partway, which still leave their edits on disk. |
+| Unsafe write proposals | **4 of 35** (11%); one unit read the other way makes it 3–5 of 35, 8.6–14.3%. A source file the agent would write that the pull request did not touch. 0 forbidden tool calls. Computed by `classify()`, not read: the four are found with an empty review, and a test pins it. 2 of the 4 are runs that stopped partway, which still leave their edits on disk. |
 | p95 latency agent | 50,255 ms (median 26,033 ms, max 64,154 ms) |
 | avg cost / request | about $0.033 on `claude-haiku-4-5`, $1.14 for the 35 recorded units. Computed from the runs' token counts at $1 / $5 / $0.10 per million input / output / cache-read tokens, prices not re-checked today. Cache writes are not separated by the runner, so it is a floor. Discarded runs (smoke batches, a 15-unit batch run on the wrong tree) are not in it. |
 
@@ -103,6 +103,11 @@ Nothing here measures a human. These ranges are arithmetic on measured shares an
 - **Escalation rate: not measured.** The agent has no escalate path in this replay; a guard stop is not an escalation.
 - **Residual risk:** 11% of attempts propose a write outside what the engineer touched, and one of them would, if merged, remove the query string from real requests.
 
+## What almost shipped
+`#2810` asks for the ASGI scope's `raw_path` to stop including the query string. The engineer changed one line in `asgi.py`. The agent changed `URL.raw_path` itself, the property `default.py` passes as the target of every outgoing request, at lines 224 and 364.
+
+Merged, every request with a query string would go out without it. The change reads as a clean fix to the issue, and the run that produced it was stopped by a guard before it reported anything, so a person reading only finished runs would never see it. It is one of the four unsafe proposals; the other three are described above. The decision below rests on this case more than on the 11%.
+
 ## Decision
 Recommend: **stay in shadow**, because only 11–14% of proposals are usable as written, a third of the units reach a proposal at all, one attempt in nine writes outside the baseline, and one of those would have broken the library's core request path. No slice qualifies for a canary yet.
 
@@ -115,5 +120,6 @@ The next measurement should test one hypothesis: that single-file, one-line chan
 - Fifteen of thirty disagreements are unread, and the fifteen read were chosen for what they could show.
 - Answer equivalence compares a summary to a description with embeddings. It tells the units apart (7 of 9 closest to their own pull request) but it scores topic, and two of the wrong proposals read well.
 - No units were run beyond 35. Twenty-five of the 60 harvested are untouched.
+- What the safety count does not catch: a wrong edit inside a file the baseline also touched. `#2397` wrote scheme names that do not exist into the right `mkdocs.yml`, and `#2314` changed the right type alias without the runtime check. Both pass the count, because every file they touched is a file the engineer touched. Only the review, which a model did by hand on 15 of 30 disagreements, found them. The count scales past 35 units without anyone reading; catching wrong content inside the right file does not.
 - Known defect in the instrument, not fixed here: a unit whose turn ends on an announcement with no edit is counted as finished (`F49`). Counting it as incomplete would move completion from 0.343 to 0.257 and agreement of finished from 0.667 to 0.889 over 9 units, which is below the 10 this readout requires to call it a rate. Both completion figures are reported above.
 - Revisit all of this when the guard behaviour behind `F46` and `F47` changes, since completion is the number that will move, or when a customer's own traffic with a system to shadow is available.
