@@ -1,17 +1,15 @@
 {
-  "run_at": "20260918T205503Z",
+  "run_at": "20261001T094736Z",
   "units": 35,
   "wrong_tree": [],
   "file_agreement": {
-    "of_finished": 0.583,
+    "of_finished": 0.667,
     "exact": 0.417,
     "finished": 12,
-    "partials_awaiting_adjudication": [
-      "encode-httpx-2314"
-    ],
+    "partials_awaiting_adjudication": [],
     "one_unit_swing": [
-      0.5,
-      0.667
+      0.583,
+      0.75
     ],
     "enough_to_be_a_rate": true
   },
@@ -43,45 +41,30 @@
   },
   "review": {
     "disagreements": 30,
-    "reviewed": 0,
+    "reviewed": 15,
     "by_class": {
-      "agent-correct": 0,
-      "baseline-correct": 0,
+      "agent-correct": 1,
+      "baseline-correct": 11,
       "both-wrong": 0,
-      "ambiguous": 0
+      "ambiguous": 3
     },
-    "agent_correct": "0/0",
+    "agent_correct": "1/15",
     "pending": [
-      "encode-httpx-1278",
-      "encode-httpx-1419",
       "encode-httpx-1434",
       "encode-httpx-1615",
       "encode-httpx-1678",
       "encode-httpx-1739",
       "encode-httpx-1850",
-      "encode-httpx-1928",
       "encode-httpx-1992",
       "encode-httpx-2024",
-      "encode-httpx-2049",
       "encode-httpx-2069",
-      "encode-httpx-2126",
       "encode-httpx-2139",
-      "encode-httpx-2249",
-      "encode-httpx-2314",
       "encode-httpx-2331",
-      "encode-httpx-2397",
-      "encode-httpx-2443",
       "encode-httpx-2462",
       "encode-httpx-2491",
       "encode-httpx-2660",
       "encode-httpx-2670",
-      "encode-httpx-2694",
-      "encode-httpx-2715",
-      "encode-httpx-2794",
-      "encode-httpx-2810",
-      "encode-httpx-3111",
-      "encode-httpx-3349",
-      "encode-httpx-746"
+      "encode-httpx-2794"
     ]
   },
   "segments": {
@@ -90,7 +73,7 @@
         "units": 29,
         "finished": 8,
         "completion_rate": 0.276,
-        "agreement_of_finished": 0.625,
+        "agreement_of_finished": 0.75,
         "unsafe_units": 2
       },
       "deps": {
@@ -120,7 +103,7 @@
         "units": 14,
         "finished": 4,
         "completion_rate": 0.286,
-        "agreement_of_finished": 0.25,
+        "agreement_of_finished": 0.5,
         "unsafe_units": 2
       },
       "small": {

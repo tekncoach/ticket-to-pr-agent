@@ -1,20 +1,20 @@
 {
   "encode-httpx-2715": {
     "call": "half-the-fix",
-    "why": "Issue asks for socket_options on HTTPTransport. The agent edited httpx/_transports/default.py, which is where the parameter lives, and its trace shows it adding it to HTTPTransport.__init__. The two files it missed are CHANGELOG.md (excluded as noise anyway) and pyproject.toml, which the pull request touched for the release, not for the feature.",
+    "why": "CORRECTED. The first version of this note said the agent added socket_options to HTTPTransport.__init__ and that pyproject.toml was touched for the release. Both were wrong. The only write is one line in the module docstring documenting a parameter that does not exist; the turn ended on 'Now let me update the HTTPTransport.__init__ method:'. pyproject.toml carried the httpcore>=0.17.2 bump the feature needs. The call stays half-the-fix because the file-agreement metric measures localisation and the agent did find default.py, but the edit is non-functional.",
     "hit": [
       "httpx/_transports/default.py"
     ],
     "missed": [
       "pyproject.toml"
     ],
-    "winner": null,
+    "winner": "baseline-correct",
     "verdict": "partial",
     "extra": []
   },
   "encode-httpx-2443": {
     "call": "half-the-fix",
-    "why": "Issue asks for httpcore>=0.16.0 support. The agent moved the constraint in pyproject.toml from >=0.15.0,<0.16.0 to >=0.16.0,<0.17.0 — the substantive change. It missed setup.py, which declared the same dependency twice in that era, and __version__.py, which is the release bump. Called half rather than whole because a fix landing in one of two dependency files is a fix that does not ship.",
+    "why": "The agent raised the lower bound to httpcore>=0.16.0 in pyproject.toml, which drops support for 0.15 and follows the ticket's literal wording. The engineer widened the upper bound only (>=0.15.0,<0.17.0) in pyproject.toml and setup.py. Left as is, setup.py still pins <0.16.0, so the two manifests disagree.",
     "hit": [
       "pyproject.toml"
     ],
@@ -22,13 +22,13 @@
       "httpx/__version__.py",
       "setup.py"
     ],
-    "winner": null,
+    "winner": "baseline-correct",
     "verdict": "partial",
     "extra": []
   },
   "encode-httpx-3349": {
-    "winner": null,
-    "why": "",
+    "winner": "ambiguous",
+    "why": "The merged pull request says 'Closes #3349' but fixes a different docs problem (a reference to a non-existent httpx.Mounts) and defers the docstring the issue asks for to #3091. The baseline does not resolve the ticket as written. The agent was reading the _client.py docstring, which is what the ticket asks, and was stopped on xargs before writing.",
     "verdict": "incomplete",
     "hit": [],
     "missed": [
@@ -37,8 +37,8 @@
     "extra": []
   },
   "encode-httpx-3111": {
-    "winner": null,
-    "why": "",
+    "winner": "baseline-correct",
+    "why": "No write. Stopped on xargs after five tool calls.",
     "verdict": "incomplete",
     "hit": [],
     "missed": [
@@ -47,8 +47,8 @@
     "extra": []
   },
   "encode-httpx-2810": {
-    "winner": null,
-    "why": "",
+    "winner": "baseline-correct",
+    "why": "Agent edited URL.raw_path in httpx/_urls.py to drop the query string. That property is documented as the request target, and default.py:224 and :364 pass request.url.raw_path as the target of every outgoing request, so the change would strip the query from real requests. The engineer fixed only the ASGI scope key, in asgi.py. Right symptom, wrong layer.",
     "verdict": "incomplete",
     "hit": [],
     "missed": [
@@ -58,6 +58,119 @@
     "extra": [
       "httpx/_urls.py"
     ]
+  },
+  "encode-httpx-2694": {
+    "winner": "baseline-correct",
+    "why": "No write. Twenty-seven tool calls of exploration, then stopped on python3 -c.",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "httpx/_urlparse.py",
+      "tests/test_urlparse.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1278": {
+    "winner": "ambiguous",
+    "why": "The ticket asks for built-in server-sent events. The maintainers resolved it by listing the httpx-sse package in the docs. Whether to build it in is a product decision that is not in the ticket. The agent started building (one ServerSentEvent class, no iter_sse) and its turn ended on 'Now I will add iter_sse()'.",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "docs/third_party_packages.md"
+    ],
+    "extra": [
+      "httpx/_models.py"
+    ]
+  },
+  "encode-httpx-746": {
+    "winner": "ambiguous",
+    "why": "The ticket contradicts itself: the title says support bytes in params, the body says it expected an exception. The maintainers raised TypeError, the agent decoded bytes. Both follow part of the ticket. The run was stopped by the duplicate-call guard before it stated anything.",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_utils.py"
+    ],
+    "missed": [
+      "tests/models/test_queryparams.py"
+    ],
+    "extra": [
+      "httpx/_urls.py"
+    ]
+  },
+  "encode-httpx-2397": {
+    "winner": "baseline-correct",
+    "why": "Same file and same structure as the engineer (a palette block with a light/dark toggle in mkdocs.yml). The agent used scheme names light and dark; Material for MkDocs ships default and slate (checked in its docs), so the toggle would switch to a scheme that does not exist. The run was stopped by the duplicate-call guard after the edit.",
+    "verdict": "incomplete",
+    "hit": [
+      "mkdocs.yml"
+    ],
+    "missed": [],
+    "extra": []
+  },
+  "encode-httpx-2249": {
+    "winner": "baseline-correct",
+    "why": "No write. The plan pointed the right way (return None for an unknown length, fall back to chunked) but the turn ended on 'Let me start implementing:' with no edit. Counted as reaching a proposal by the runtime; it has none.",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "httpx/_multipart.py",
+      "tests/test_multipart.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2314": {
+    "winner": "baseline-correct",
+    "call": "half-the-fix",
+    "why": "The agent changed the HeaderTypes alias from Dict to Mapping in _types.py, which is what the ticket names. The engineer's diff also relaxes the runtime isinstance(headers, dict) check in _models.py, which is what makes the new annotation true. Without it the type checker accepts a Mapping that the runtime does not handle as one.",
+    "verdict": "partial",
+    "hit": [
+      "httpx/_types.py"
+    ],
+    "missed": [
+      "httpx/_models.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2126": {
+    "winner": "baseline-correct",
+    "why": "No write. Stopped on xargs while searching the docs for raise_for_status.",
+    "verdict": "incomplete",
+    "hit": [],
+    "missed": [
+      "docs/exceptions.md"
+    ],
+    "extra": []
+  },
+  "encode-httpx-2049": {
+    "winner": "baseline-correct",
+    "why": "No write; the turn ended on 'Let me implement this:'. The plan chose the hex dump, the heavier of the issue's two options, where the engineer printed '<N bytes of binary data>'.",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "httpx/_main.py",
+      "tests/conftest.py",
+      "tests/test_main.py"
+    ],
+    "extra": []
+  },
+  "encode-httpx-1928": {
+    "winner": "agent-correct",
+    "why": "Identical to the engineer's change: Response.url annotated URL instead of Optional[URL] in _models.py. The run was stopped by the duplicate-call guard after the edit, so the metric counts a correct, complete fix as incomplete.",
+    "verdict": "incomplete",
+    "hit": [
+      "httpx/_models.py"
+    ],
+    "missed": [],
+    "extra": []
+  },
+  "encode-httpx-1419": {
+    "winner": "baseline-correct",
+    "why": "No write; the turn ended on 'Let me update the Supported async environments section:'.",
+    "verdict": "disagreed",
+    "hit": [],
+    "missed": [
+      "docs/async.md"
+    ],
+    "extra": []
   },
   "encode-httpx-1434": {
     "winner": null,
@@ -82,29 +195,6 @@
     ],
     "extra": []
   },
-  "encode-httpx-2694": {
-    "winner": null,
-    "why": "",
-    "verdict": "incomplete",
-    "hit": [],
-    "missed": [
-      "httpx/_urlparse.py",
-      "tests/test_urlparse.py"
-    ],
-    "extra": []
-  },
-  "encode-httpx-1278": {
-    "winner": null,
-    "why": "",
-    "verdict": "disagreed",
-    "hit": [],
-    "missed": [
-      "docs/third_party_packages.md"
-    ],
-    "extra": [
-      "httpx/_models.py"
-    ]
-  },
   "encode-httpx-2670": {
     "winner": null,
     "why": "",
@@ -126,20 +216,6 @@
       "tests/test_utils.py"
     ],
     "extra": []
-  },
-  "encode-httpx-746": {
-    "winner": null,
-    "why": "",
-    "verdict": "incomplete",
-    "hit": [
-      "httpx/_utils.py"
-    ],
-    "missed": [
-      "tests/models/test_queryparams.py"
-    ],
-    "extra": [
-      "httpx/_urls.py"
-    ]
   },
   "encode-httpx-2491": {
     "winner": null,
@@ -164,16 +240,6 @@
     ],
     "extra": []
   },
-  "encode-httpx-2397": {
-    "winner": null,
-    "why": "",
-    "verdict": "incomplete",
-    "hit": [
-      "mkdocs.yml"
-    ],
-    "missed": [],
-    "extra": []
-  },
   "encode-httpx-2069": {
     "winner": null,
     "why": "",
@@ -183,17 +249,6 @@
     ],
     "missed": [
       "httpx/_types.py",
-      "tests/test_multipart.py"
-    ],
-    "extra": []
-  },
-  "encode-httpx-2249": {
-    "winner": null,
-    "why": "",
-    "verdict": "disagreed",
-    "hit": [],
-    "missed": [
-      "httpx/_multipart.py",
       "tests/test_multipart.py"
     ],
     "extra": []
@@ -209,29 +264,6 @@
     ],
     "extra": []
   },
-  "encode-httpx-2314": {
-    "winner": null,
-    "call": null,
-    "why": "",
-    "verdict": "partial",
-    "hit": [
-      "httpx/_types.py"
-    ],
-    "missed": [
-      "httpx/_models.py"
-    ],
-    "extra": []
-  },
-  "encode-httpx-2126": {
-    "winner": null,
-    "why": "",
-    "verdict": "incomplete",
-    "hit": [],
-    "missed": [
-      "docs/exceptions.md"
-    ],
-    "extra": []
-  },
   "encode-httpx-2139": {
     "winner": null,
     "why": "",
@@ -241,18 +273,6 @@
     ],
     "missed": [
       "tests/client/test_async_client.py"
-    ],
-    "extra": []
-  },
-  "encode-httpx-2049": {
-    "winner": null,
-    "why": "",
-    "verdict": "disagreed",
-    "hit": [],
-    "missed": [
-      "httpx/_main.py",
-      "tests/conftest.py",
-      "tests/test_main.py"
     ],
     "extra": []
   },
@@ -303,16 +323,6 @@
     ],
     "extra": []
   },
-  "encode-httpx-1928": {
-    "winner": null,
-    "why": "",
-    "verdict": "incomplete",
-    "hit": [
-      "httpx/_models.py"
-    ],
-    "missed": [],
-    "extra": []
-  },
   "encode-httpx-1615": {
     "winner": null,
     "why": "",
@@ -336,16 +346,6 @@
     "missed": [
       "requirements.txt",
       "tests/conftest.py"
-    ],
-    "extra": []
-  },
-  "encode-httpx-1419": {
-    "winner": null,
-    "why": "",
-    "verdict": "disagreed",
-    "hit": [],
-    "missed": [
-      "docs/async.md"
     ],
     "extra": []
   }
