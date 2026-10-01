@@ -66,18 +66,29 @@ curl gets a 401, and public was what made it gradeable. Every page is served
 Open it for a review, close it after. `curl -o /dev/null -w '%{http_code}'` on
 the root says which state it is in: 200 open, 307 closed.
 
-## The kill switch
+## The kill switches
 
-`SHADOW_MODE` is read on every tool call, so stopping writes does not need a
-rebuild:
+Four environment variables, in the order to reach for them. The rollout plan says when ([`SHADOW_ROLLOUT.md`](SHADOW_ROLLOUT.md)).
+
+| Variable | Does | `/health` shows |
+|---|---|---|
+| `SHADOW_MODE=true` | every write tool becomes a receipt; the agent keeps running | `shadow_mode` |
+| `AGENT_ENABLED=false` | `/v1/run` and `/v1/chat` answer 503 before anything else | `agent_enabled` |
+| `DISABLED_TOOLS=open_pr,comment_on_ticket` | the named tools are refused, the rest work | `disabled_tools`, `disabled_tools_unknown` |
+| `LLM_MODEL=<model>` | the model fallback | `model` |
+
+Changing one needs the container recreated, not rebuilt, and none of it needs a deploy:
 
 ```bash
-ssh ticket-to-pr-agent.exe.xyz "cd ~/app && sed -i s/SHADOW_MODE=false/SHADOW_MODE=true/ .env && \
-  docker compose --env-file .env -f deploy/docker-compose.yml up -d"
-curl -s https://ticket-to-pr-agent.exe.xyz/health   # shadow_mode confirms it took
+ssh ticket-to-pr-agent.exe.xyz 'set_switch() { f=~/app/.env; grep -q "^$1=" "$f" && sed -i.bak "s/^$1=.*/$1=$2/" "$f" || echo "$1=$2" >> "$f"; }
+  set_switch AGENT_ENABLED false
+  cd ~/app && docker compose --env-file .env -f deploy/docker-compose.yml up -d'
+curl -s https://ticket-to-pr-agent.exe.xyz/health   # the field must read what you set
 ```
 
-`/health` is how you check it actually applied, rather than assuming.
+`/health` is how you check it actually applied, rather than assuming. Recreating the container ends any run in progress, since `/v1/run` is synchronous. The helper above has been tested on a copy of `.env` and has not yet been run on this VM. The compose file lists each variable by name: a variable it does not list never reaches the container. `AGENT_ENABLED` and `DISABLED_TOOLS` fail closed (anything but `true` turns the agent off), and a misspelt tool name shows up under `disabled_tools_unknown`.
+
+**This needs SSH access to the VM**, held by one person today, so it does not meet the bar of being usable by someone who is not the author. A platform with an environment-variable page would remove the requirement; the variables are the same.
 
 ## The image goes stale on purpose
 
