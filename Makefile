@@ -2,7 +2,7 @@
 # shadow audit can ask GitHub about it without loading the agent.
 TARGET_REPO ?= tekncoach/liberty-rider-myroadtrips
 
-.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit shadow-harvest shadow-run shadow-audit-before shadow-audit-after shadow-diff judge-dump judge-calibrate hooks docker-up docker-down
+.PHONY: agent run run-ticket mcp-server ingest rag-query test eval golden golden-ci golden-record golden-replay golden-freeze golden-check modes drift drift-check trend audit shadow-harvest shadow-run shadow-audit-before shadow-audit-after shadow-diff rollout-check judge-dump judge-calibrate hooks docker-up docker-down
 
 # Run the agent directly (agent/cli.py) with one message — the fast path,
 # no server. Needs .env — see README Quickstart.
@@ -203,3 +203,8 @@ docker-up:
 docker-down:
 	docker compose --env-file .env -f deploy/docker-compose.yml down
 
+# The rollback trigger as a command: exit 0 nothing tripped, 1 a trigger tripped,
+# 2 nothing was found and REQUIRE=1 was set. Live traces by default; point RUNS at
+# a shadow results file to see what the trigger would have said about it.
+rollout-check:
+	uv run python -m agent.rollout_check $(or $(RUNS),tmp/sessions) $(if $(REQUIRE),--require-runs,)
