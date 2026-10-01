@@ -106,3 +106,24 @@ AUTH_SENSITIVE_SYMBOLS = tuple(
         "AUTH_SENSITIVE_SYMBOLS", "_is_cross_site,SESSION_COOKIE",
     ).split(",") if s.strip()
 )
+
+# File names whose contents the agent must not read or write, whichever tool it
+# reaches for. Found by testing: with a .env and a private key in the checkout,
+# `cat .env`, `cat id_rsa`, `grep -r KEY .` and the editor's view all returned
+# the secret, which would have gone to the model and into the run trace. The
+# editor's own denylist is two names configured for the reference target
+# (crypto.py, migrations) and the shell had none.
+#
+# Matched on the file's base name, case-insensitively, as glob patterns. Template
+# names (.env.example and its kin) are exempt in agent/sensitive_files.py: a
+# template holds no secret and everyone reads it. SENSITIVE_FILES_EXTRA adds
+# names for a target and never replaces these, since a repository's secrets are
+# not all called .env.
+SENSITIVE_FILE_PATTERNS = (
+    ".env", ".env.*", "*.pem", "*.key", "*.p12", "*.pfx", "*.keystore", "*.jks",
+    "id_rsa", "id_dsa", "id_ecdsa", "id_ed25519",
+    ".netrc", ".pgpass", ".git-credentials", "credentials.json",
+    "secrets.json", "secrets.yml", "secrets.yaml",
+) + tuple(
+    s.strip().lower() for s in os.environ.get("SENSITIVE_FILES_EXTRA", "").split(",") if s.strip()
+)

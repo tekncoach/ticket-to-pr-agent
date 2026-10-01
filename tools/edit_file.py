@@ -26,6 +26,7 @@ from pathlib import Path
 from agent.config import AUTH_SENSITIVE_SYMBOLS, WORKSPACE
 from agent.errors import ErrorClass, ToolError
 from agent.consent import authorised_issue
+from agent.sensitive_files import sensitive_pattern
 from agent.runtime import Tool, ToolResult
 from agent.tickets import check_ready
 from agent.workspace_guard import resolve_within_workspace
@@ -39,7 +40,11 @@ def _resolve_safe_path(raw_path: str) -> Path | None:
 
 def _is_denied(path: Path) -> bool:
     rel = path.relative_to(WORKSPACE.resolve())
-    return any(part in DENYLIST for part in rel.parts) or rel.name in DENYLIST
+    # The two names above are configured for the reference target. Credential
+    # files are refused for every target, by every command including view, and by
+    # the shell as well: agent/sensitive_files.py is the one list both read.
+    return (any(part in DENYLIST for part in rel.parts) or rel.name in DENYLIST
+            or sensitive_pattern(rel.name) is not None)
 
 
 def _touches_auth_symbol(*texts: str) -> str | None:

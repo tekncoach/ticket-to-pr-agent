@@ -27,6 +27,7 @@ import time
 from agent.config import WORKSPACE
 from agent.errors import ErrorClass, ToolError
 from agent.runtime import Tool, ToolResult
+from agent.sensitive_files import grep_exclusions, is_recursive_grep, sensitive_arg
 from agent.workspace_guard import resolve_within_workspace
 
 ALLOWED_EXECUTABLES = {"grep", "cat", "find", "ls", "head", "tail", "wc", "pwd",
@@ -304,6 +305,15 @@ def _handler(arguments: dict) -> ToolResult:
                 if resolve_within_workspace(WORKSPACE, arg) is None:
                     return ToolResult(ok=False, error_code=str(
                         ToolError(ErrorClass.DENIED, f"argument escapes workspace: {arg}")))
+                # Names, after the glob expansion above, so `cat .e*` is judged on
+                # what it became. A refusal here is final, class denied.
+                if (pattern := sensitive_arg(WORKSPACE, arg, git=stage[0] == "git")) is not None:
+                    return ToolResult(ok=False, error_code=str(ToolError(
+                        ErrorClass.DENIED, f"argument names a sensitive file: {arg} (matches {pattern})")))
+            # A recursive grep never names the files it reads, so it cannot be
+            # refused by its arguments. Keep it out of them instead.
+            if stage[0] == "grep" and is_recursive_grep(stage[1:]):
+                stage[1:1] = grep_exclusions()
         validated.append(stages)
 
     output, returncode = "", None
