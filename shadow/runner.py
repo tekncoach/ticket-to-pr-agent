@@ -319,7 +319,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run traffic through the agent, writing nothing.")
     parser.add_argument("--traffic", type=Path, default=HERE / "traffic.jsonl")
     parser.add_argument("--limit", type=int, default=3,
-                        help="units to run; the batch is deliberately small, see shadow/README.md")
+                        help="units to run; cost and rationale in docs/SHADOW-LESSONS.md")
     parser.add_argument("--model", default=None)
     parser.add_argument("--workspace", type=Path, default=None,
                         help="existing checkout to use instead of cloning")
