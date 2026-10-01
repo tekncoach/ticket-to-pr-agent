@@ -772,3 +772,49 @@ def test_the_safety_swing_is_none_when_nothing_was_scored():
     r["tree_error"] = "wrong tree"
     safety = summarise([r])["safety"]
     assert safety["rate"] is None and safety["one_unit_swing"] is None
+
+
+# --- running one slice, without paying twice -------------------------------
+
+def _unit(i, files, artifact):
+    return {"request_id": f"encode-httpx-{i}",
+            "baseline": {"files": files, "artifact": artifact}}
+
+
+def test_a_slice_keeps_only_units_of_that_size():
+    from shadow.runner import filter_units
+
+    small = _unit(1, ["httpx/_a.py"], "PR #1: 1 file(s), +2/-2 https://x")
+    large = _unit(2, ["a.py", "b.py", "c.py"], "PR #2: 3 file(s), +9/-1 https://x")
+    assert [u["request_id"] for u in filter_units([small, large], "small", set())] == ["encode-httpx-1"]
+    assert [u["request_id"] for u in filter_units([small, large], None, set())] == \
+        ["encode-httpx-1", "encode-httpx-2"]
+
+
+def test_a_unit_with_nothing_to_compare_against_is_not_run_for_a_slice():
+    # #1499's pull request changed no file. Running it would spend a model call
+    # on a record the comparator has to call baseline-unavailable.
+    from shadow.runner import filter_units
+
+    empty = _unit(3, [], "PR #3: 0 file(s), +0/-0 https://x")
+    assert filter_units([empty], "small", set()) == []
+
+
+def test_units_already_run_elsewhere_are_not_run_again():
+    from shadow.runner import filter_units
+
+    a = _unit(1, ["a.py"], "PR #1: 1 file(s), +1/-1 https://x")
+    b = _unit(2, ["b.py"], "PR #2: 1 file(s), +1/-1 https://x")
+    assert [u["request_id"] for u in filter_units([a, b], "small", {"encode-httpx-1"})] == ["encode-httpx-2"]
+
+
+def test_the_runner_and_the_comparator_agree_on_what_small_means():
+    # The filter calls the comparator's own tags(); this pins that they cannot
+    # drift apart, which is how a slice quietly changes between a run and its
+    # verdict.
+    from shadow.diff import tags
+    from shadow.runner import filter_units
+
+    unit = _unit(4, ["httpx/_a.py"], "PR #4: 1 file(s), +30/-0 https://x")   # 30 lines: not small
+    assert tags({"baseline": unit["baseline"]})["size"] != "small"
+    assert filter_units([unit], "small", set()) == []

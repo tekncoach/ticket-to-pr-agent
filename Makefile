@@ -133,6 +133,7 @@ shadow-harvest:
 shadow-run:
 	uv run --env-file .env python -m shadow.runner $(if $(LIMIT),--limit $(LIMIT),) \
 	  $(if $(SKIP_DONE),--skip-done,) \
+	  $(if $(SIZE),--size $(SIZE),) $(if $(EXCLUDE),--exclude $(EXCLUDE),) $(if $(OUT),--out $(OUT),) \
 	  $(if $(MODEL),--model $(MODEL),)
 
 # Turn the pairwise log into a verdict: file agreement against the merged pull

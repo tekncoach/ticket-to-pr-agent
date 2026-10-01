@@ -220,6 +220,27 @@ def _proposal(outcome: dict, intended: list[dict]) -> dict:
     }
 
 
+def filter_units(units: list[dict], size: str | None, exclude: set[str]) -> list[dict]:
+    """Narrow the traffic to one slice, and drop units already run elsewhere.
+
+    The slice is read from the pull request with the same function the comparator
+    uses, so the runner and the verdict cannot disagree about what "small" means.
+    A unit with no baseline files is dropped whenever a slice is asked for: there
+    is nothing to compare its proposal against, and running it would spend money
+    to produce a record the comparator has to call unavailable.
+
+    `exclude` is how a second sample avoids paying twice for units a first one
+    already ran, without writing into the first one's results file.
+    """
+    from shadow.diff import tags
+
+    kept = [u for u in units if u["request_id"] not in exclude]
+    if size:
+        kept = [u for u in kept
+                if u["baseline"].get("files") and tags({"baseline": u["baseline"]})["size"] == size]
+    return kept
+
+
 def select_units(units: list[dict], earlier: list[dict], limit: int,
                  skip_done: bool) -> tuple[list[dict], list[dict]]:
     """Which units to run now, and which earlier records to keep.
@@ -324,6 +345,11 @@ def main() -> int:
     parser.add_argument("--workspace", type=Path, default=None,
                         help="existing checkout to use instead of cloning")
     parser.add_argument("--out", type=Path, default=HERE / "results.jsonl")
+    parser.add_argument("--size", choices=["small", "medium", "large"], default=None,
+                        help="run only units whose pull request is of this size")
+    parser.add_argument("--exclude", type=Path, default=None,
+                        help="a results file whose units are not run again (this run's own "
+                             "--out is left alone)")
     parser.add_argument("--skip-done", action="store_true",
                         help="run only units with no valid record yet, and add to --out "
                              "rather than replace it")
@@ -334,6 +360,12 @@ def main() -> int:
     # Growing a batch in slices, so each slice's cost is measured before the
     # next is paid for. A record counts as done only if it ran on its own base
     # commit — a wrong-tree record is exactly the one worth running again.
+    exclude = set()
+    if args.exclude and args.exclude.exists():
+        exclude = {json.loads(l)["request_id"] for l in
+                   args.exclude.read_text(encoding="utf-8").splitlines() if l.strip()}
+    units = filter_units(units, args.size, exclude)
+
     earlier = []
     if args.skip_done and args.out.exists():
         earlier = [json.loads(l) for l in args.out.read_text(encoding="utf-8").splitlines()
