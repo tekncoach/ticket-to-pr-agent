@@ -99,6 +99,8 @@ See [`evals/README.md`](evals/README.md). CI runs `make test` on every push and 
 - [`SPEC.md`](docs/SPEC.md): problem, users, tools, SLOs, rollout plan
 - [`DESIGN.md`](docs/DESIGN.md): design decisions and tenancy
 - [`COST-AND-LIMITS.md`](docs/COST-AND-LIMITS.md): measured costs and known limits
+- [`SHADOW_ROLLOUT.md`](docs/SHADOW_ROLLOUT.md): shadow results, the staged rollout plan, kill switches
+- [`RISK-MEMO.md`](docs/RISK-MEMO.md): data handling, human control, logs, what can go wrong
 - [`FIRST-COMPLETED-RUN.md`](docs/FIRST-COMPLETED-RUN.md): the one end-to-end run
 - [`DEMO.md`](docs/DEMO.md): the four-click walkthrough
 - [`DEPLOY.md`](docs/DEPLOY.md): the VM, access, rollback
